@@ -1,0 +1,29 @@
+{
+  "name": "opencode-agent-trees",
+  "version": "0.1.0",
+  "description": "Agent family trees for OpenCode V2: parent/child/sibling navigation, durable per-session journals, and handoff injection into finished sessions.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.1.2"
+  },
+  "devDependencies": {
+    "@opencode/client": "2.1.2",
+    "@opencode/schema": "2.1.2",
+    "@types/node": "^26.6.6",
+    "effect": "4.0.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
