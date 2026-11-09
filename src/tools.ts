@@ -7,12 +7,19 @@
 import { appendEntry, readJournal, type StorageLike } from "./lib/journal.ts"
 import { buildFamily, describeSelf, loadAncestors, modelLabel, type SessionLike } from "./lib/family.ts"
 import { formatHandoff, outcomeWord } from "./lib/handoff.ts"
+import { recoverSessions, type RecoverSession, type RecoveryListInput, type RecoveryPrompt } from "./lib/recover.ts"
 
 export interface TreeToolDeps {
   storage: StorageLike
   get(id: string): Promise<SessionLike | undefined>
   listChildren(parentID: string): Promise<readonly SessionLike[]>
-  prompt(input: { sessionID: string; text: string; resume?: boolean | undefined }): Promise<unknown>
+  prompt(input: { sessionID: string; text: string; resume?: boolean | undefined; delivery?: "steer" | "queue" | undefined }): Promise<unknown>
+  wait?(input: { sessionID: string }): Promise<void>
+  context?(input: { sessionID: string }): Promise<readonly import("./lib/recover.ts").RecoveryMessage[]>
+  switchModel?(input: { sessionID: string; model: { providerID: string; id: string } }): Promise<void>
+  listSessions?(input: RecoveryListInput): Promise<{ data: readonly RecoverSession[]; cursor?: { next?: string } }>
+  sleep?(ms: number): Promise<void>
+  now?(): number
 }
 
 /** The subset of the tool-execution context these handlers read. */
@@ -21,11 +28,15 @@ export interface ToolCall {
   agent?: string | undefined
   messageID?: string | undefined
   id?: string | undefined
+  signal?: AbortSignal | undefined
+  progress?: ((update: unknown) => void | Promise<void>) | undefined
 }
 
 export interface TreeToolResult {
-  /** JSON body the model reads. Tools intentionally return content only. */
+  /** Human-readable rendering for the tool transcript. */
   content: string
+  /** Structured body for the OpenCode V2 tool output schema. */
+  output: Record<string, unknown>
   metadata?: Record<string, unknown>
 }
 
@@ -36,9 +47,12 @@ export interface TreeTool {
   execute(input: Record<string, unknown>, context: ToolCall): Promise<TreeToolResult>
 }
 
-const ok = (body: Record<string, unknown>): TreeToolResult => ({
-  content: JSON.stringify(body, null, 2),
-})
+const ok = (body: Record<string, unknown>): TreeToolResult => {
+  // Match the declared JSON object output schema and omit undefined fields just
+  // as JSON serialization does for the text rendering.
+  const output = JSON.parse(JSON.stringify(body)) as Record<string, unknown>
+  return { content: JSON.stringify(output, null, 2), output }
+}
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length ? value : undefined
@@ -140,7 +154,7 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
     name: "handoff",
     description:
       "Record a child's report in its journal, then push a formatted handoff into the child's parent session, " +
-      "resuming that parent if it has already finished. Returns what the prompt call actually returned.",
+      "only when the child belongs to the caller's session family. The actual parent is resumed if finished.",
     input: {
       type: "object",
       properties: {
@@ -163,8 +177,25 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
       const parentID = child.parentID
       if (!parentID) throw new Error(`session ${childID} has no parent to hand off to`)
 
+      const [childAncestors, callerAncestors] = await Promise.all([
+        loadAncestors(childID, deps),
+        loadAncestors(context.sessionID, deps),
+      ])
+      if (!childAncestors.has(childID)) throw new Error(`session not found: ${childID}`)
+      if (!callerAncestors.has(context.sessionID)) throw new Error(`session not found: ${context.sessionID}`)
+      const childRoot = describeSelf(childID, (id) => childAncestors.get(id)).rootID
+      const callerRoot = describeSelf(context.sessionID, (id) => callerAncestors.get(id)).rootID
+      if (childRoot !== callerRoot) throw new Error(`session ${childID} is outside the caller's session family`)
+
       const outcome = outcomeWord(child.outcome)
-      const text = formatHandoff({ childID, outcome, summary, ...(note ? { note } : {}) })
+      const text = formatHandoff({
+        reporterID: context.sessionID,
+        childID,
+        parentID,
+        outcome,
+        summary,
+        ...(note ? { note } : {}),
+      })
 
       await appendEntry(deps.storage, childID, {
         kind: "handoff",
@@ -216,10 +247,58 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
     },
   }
 
-  return { whoami, family, journal, handoff, wake }
+  const recover: TreeTool = {
+    name: "recover",
+    description:
+      "Recursively recover one session tree bottom-up. rootId accepts any session ID in the tree and climbs to the true root. If rootId is omitted, optional NRR/custom-marker discovery proceeds only when exactly one title matches. Supports dry-run planning.",
+    input: {
+      type: "object",
+      properties: {
+        rootId: { type: "string", description: "Any session ID in the tree; recovery climbs parentID links to the true root. Omit for optional title-marker discovery." },
+        marker: { type: "string", description: "Title marker for discovery when rootId is omitted. Default nrr; bare and parenthesized forms are accepted." },
+        dryRun: { type: "boolean", description: "Return the complete recovery plan without sending prompts." },
+        leafTimeoutMs: { type: "integer", minimum: 1, description: "Maximum wait per resumed session. Default 900000." },
+        maxDurationMs: { type: "integer", minimum: 1, description: "Maximum total run duration. Default 3600000." },
+        pinModel: { type: "string", description: "Optionally pin resumed sessions to providerID/modelID. Omit to preserve each session's current model." },
+      },
+      additionalProperties: false,
+    },
+    async execute(input, context) {
+      if (!deps.listSessions || !deps.wait || !deps.context) {
+        throw new Error("tree.recover requires listSessions, wait, and context dependencies")
+      }
+      const rootId = asString(input.rootId)
+      const report = await recoverSessions(
+        {
+          ...(rootId ? { rootId } : {}),
+          ...(asString(input.marker) ? { marker: asString(input.marker) } : {}),
+          ...(typeof input.dryRun === "boolean" ? { dryRun: input.dryRun } : {}),
+          ...(typeof input.leafTimeoutMs === "number" ? { leafTimeoutMs: input.leafTimeoutMs } : {}),
+          ...(typeof input.maxDurationMs === "number" ? { maxDurationMs: input.maxDurationMs } : {}),
+          ...(asString(input.pinModel) ? { pinModel: asString(input.pinModel) } : {}),
+          ...(context.signal ? { signal: context.signal } : {}),
+          ...(context.progress ? { progress: context.progress } : {}),
+        },
+        {
+          storage: deps.storage,
+          get: async (id) => (await deps.get(id)) as RecoverSession | undefined,
+          listSessions: deps.listSessions,
+          prompt: (prompt) => deps.prompt(prompt as RecoveryPrompt),
+          wait: deps.wait,
+          context: deps.context,
+          switchModel: deps.switchModel,
+          sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+          now: deps.now ?? Date.now,
+        },
+      )
+      return ok(report as unknown as Record<string, unknown>)
+    },
+  }
+
+  return { whoami, family, journal, handoff, wake, recover }
 }
 
 export const TREE_NAMESPACE = {
   name: "tree",
-  description: "Agent family trees: identity, family graph, durable journals, handoff and wake.",
+  description: "Agent family trees: identity, family graph, durable journals, handoff, wake and recursive recovery.",
 }

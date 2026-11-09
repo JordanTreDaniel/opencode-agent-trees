@@ -191,19 +191,27 @@ test("buildFamily does not recursively duplicate nodes on a downward cycle", asy
 
 test("formatHandoff matches the required message format", () => {
   assert.equal(
-    formatHandoff({ childID: "ses_child", outcome: "finished", summary: "wrote 3 files" }),
-    "Your child ses_child finished. Here is what it reported: wrote 3 files.",
+    formatHandoff({
+      reporterID: "ses_root",
+      childID: "ses_child",
+      parentID: "ses_root",
+      outcome: "finished",
+      summary: "wrote 3 files",
+    }),
+    "Agent-tree handoff from ses_root: child ses_child (parent ses_root) finished. Here is what it reported: wrote 3 files.",
   )
 })
 
 test("formatHandoff maps failed outcomes to died and appends the note", () => {
   assert.equal(
     formatHandoff({
+      reporterID: "ses_root",
       childID: "ses_dead",
+      parentID: "ses_root",
       outcome: "died",
       summary: "Go usage limit exceeded",
       note: "pin the model next time",
     }),
-    "Your child ses_dead died. Here is what it reported: Go usage limit exceeded. Note: pin the model next time.",
+    "Agent-tree handoff from ses_root: child ses_dead (parent ses_root) died. Here is what it reported: Go usage limit exceeded. Note: pin the model next time.",
   )
 })

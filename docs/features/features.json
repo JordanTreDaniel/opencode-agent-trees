@@ -1,0 +1,2452 @@
+[
+  {
+    "id": "F-01",
+    "title": "Recursive leaf-first recovery",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can finish incomplete work from its starting point without repeating completed effort.",
+    "jobStory": "When related work is incomplete, I want to recover it from where it began, so I can finish the original task without repeating completed work.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-01-V1",
+          "name": "Recursive leaf-first recovery",
+          "given": "A user points to an incomplete root session with failed descendants.",
+          "when": "Recovery is started without the user supplying child IDs.",
+          "then": "Affected leaves finish first, their separate results propagate upward behind sibling barriers, and the root is reactivated after descendant work completes."
+        }
+      ],
+      "invalidation": [
+        "A descendant is skipped despite failed work; sibling results are merged; a parent resumes before required siblings finish; completed work is repeated; or recovery stops without the root being reactivated."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-01-01",
+          "slug": "f-01-leaf-first-recovery",
+          "description": "Affected leaves finish first, their separate results propagate upward behind sibling barriers, and the root is reactivated after descendant work completes.",
+          "method": "mixed",
+          "expected_values": {
+            "leaf_first_recovery": "true"
+          },
+          "evidence": "Observable session/tree state and a recorded recovery result; capture a screenshot or structured event when available.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": "RT-F-01",
+      "ref": "docs/features/recursive-wake-up.md#routine",
+      "reason": "The user specified an ordered recovery routine; its contract is rendered in recursive-wake-up.md.",
+      "trigger": "manual",
+      "inputs": [
+        "User-selected session ID (usually the root, but it may be any session in the tree)",
+        "Existing session-family relationships and current state of descendants",
+        "Work, messages, and results produced since the interruption",
+        "Failure information when available: timeout, internet connection drop, or provider-credit/credential problem",
+        "The intended model, subject to OpenCode controls"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "discover",
+          "target": "pointed session",
+          "description": "Walk descendants to affected failed leaves without asking the user for child IDs."
+        },
+        {
+          "order": 2,
+          "action": "recover",
+          "target": "each failed leaf",
+          "description": "Continue and finish each leaf\u2019s work."
+        },
+        {
+          "order": 3,
+          "action": "handoff",
+          "target": "each child result",
+          "description": "Prefer child-to-direct-parent wake with its own summary and brief note; otherwise collect output and pass it upward."
+        },
+        {
+          "order": 4,
+          "action": "separate",
+          "target": "child results",
+          "description": "Preserve one attributable handoff per child."
+        },
+        {
+          "order": 5,
+          "action": "wait",
+          "target": "siblings of a parent",
+          "description": "Hold the parent until all required sibling recoveries complete."
+        },
+        {
+          "order": 6,
+          "action": "repeat",
+          "target": "ancestor chain",
+          "description": "Resolve children, resume each failed parent, and pass its result to its own parent until the root is reactivated."
+        },
+        {
+          "order": 7,
+          "action": "reconcile",
+          "target": "work since failure",
+          "description": "Reuse completed/relaunched work and avoid duplicating the better existing investigation."
+        },
+        {
+          "order": 8,
+          "action": "account",
+          "target": "failure and model",
+          "description": "Account for timeout, connection, and provider-credit/credential failures under OpenCode controls; keep agents on the intended model."
+        }
+      ]
+    },
+    "skillDoc": {
+      "ref": "docs/features/recursive-wake-up.md",
+      "status": "present",
+      "reason": "Human-readable recovery routine and ambiguity register."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+      "quote": "for each leaf agent, i tell them 'continue and finish up'\nwe repeat until the root agent is reactivated",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "How to distinguish failed from slow or still-running sessions.",
+      "Which descendants are required participants in a sibling barrier.",
+      "Who coordinates and what mechanism it uses when a child cannot wake its parent.",
+      "Handoff payload schema, exact fields, summary length, and ordering; only a summary plus a brief note is specified.",
+      "Reconciliation authority when messages, journals, or files conflict, including how to compare competing investigations.",
+      "Termination meaning (root running, root task done, or every descendant verified).",
+      "Model/depth defaults beyond explicit pinModel behavior and model inheritance for sessions not resumed by this run.",
+      "Data-model schema and persistence.",
+      "Whether core-restart emulation belongs in this plugin.",
+      "What retry, wait, model-switch, or stop policy applies to each failure class (timeout, network drop, provider credits/creds)?"
+    ],
+    "notes": [
+      "The inventory combines two exact quote fragments from the same source message.",
+      "Verified 2026-11-09: F-01-V1 acceptance passed on attempt 9 (root ses_e408c94f5ffewWj2xFGZsfC8z4) — an exact 1/2/4 tree of 7 sessions was built and interrupted, tree.recover resumed all 7 with rootReactivated=true, all 6 handoffs were delivered with parentResumed=true, and every original session finished idle_outcome=succeeded with a recovery:done journal entry (descendant count still exactly 7). Adversarial verification PASSed against the primary artifacts. Evidence: docs/proof/f01v1-demo/.",
+      "Implementation status (2026-11-01): tree.recover implements the recursive routine and NRR discovery; adversarial/live verification passed 2026-11-09 on attempt 9 (see docs/proof/f01v1-demo/).",
+      "Coordinator scope: The specified steps describe the desired outcome and handoff preference, but do not specify coordinator implementation mechanics. Do not infer a payload schema, summary length, or coordination mechanism from “summary” and “brief note.”",
+      "Termination condition: The specified stopping point is: the root is reactivated with all descendants successfully finished. What “successfully finished” proves, and whether root reactivation is sufficient or the root’s task must also be complete, remain open questions. Do not claim the workflow is verified until that termination contract is resolved and observable proof passes.",
+      "Why this was lost: The failed build translated the requested workflow into five primitives—`whoami`, `family`, `journal`, `handoff`, and `wake`—but never implemented the crawler, the sibling barrier, or upward result bubbling. Those primitives do not by themselves satisfy the leaf-first recovery feature."
+    ],
+    "links": {
+      "storyId": "US-001",
+      "routineId": "RT-F-01",
+      "proofIds": [
+        "PC-F-01-01"
+      ],
+      "skillDocRef": "docs/features/recursive-wake-up.md"
+    },
+    "algorithm": [
+      {
+        "order": 1,
+        "text": "Start from the session the user points to, usually any level and often the root, when it is incomplete.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "i come to a session (usually root, could be any level), i see that it didn't complete."
+        }
+      },
+      {
+        "order": 2,
+        "text": "Inspect the visible failure or failed sub-agent calls and recursively check for leaf agents.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "i usually see some error that killed it (internet, ai creds) or i see red sub agent calls (failed). i click into those, check recursively for the leaf agents."
+        }
+      },
+      {
+        "order": 3,
+        "text": "For each leaf agent, tell it to continue and finish up.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "3. and for each leaf agent, i tell them \"continue and finish up [and wake up your parent by injecting your summary into thier context with brief note about what happened to you]\""
+        }
+      },
+      {
+        "order": 4,
+        "text": "Prefer for the leaf to wake its parent by injecting its own summary into the parent context with a brief note about what happened.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "wake up your parent by injecting your summary into thier context with brief note about what happened to you"
+        }
+      },
+      {
+        "order": 5,
+        "text": "Alternatively, wait for the child to complete, collect its output, and give it to the parent.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199e0ded5001LRE6FdrhlXgVHz",
+          "quote": "wait for the child to complete and then we have to grab the output and then we have to give it to the parent."
+        }
+      },
+      {
+        "order": 6,
+        "text": "Keep each child handoff separate so the parent can tell what each sub-agent did.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199e40807001BLRGXI6IOev1RX",
+          "quote": "I imagine that they keep it separate so that they can tell what each sub agent did."
+        }
+      },
+      {
+        "order": 7,
+        "text": "When multiple children failed, wait for both before letting the parent get cooking.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199e0ded5001LRE6FdrhlXgVHz",
+          "quote": "especially if multiple failed, because then we would have to Wait for both of those children before we really want the parent to get cooking or whatever."
+        }
+      },
+      {
+        "order": 8,
+        "text": "Let the parent know that recovery of its children is underway.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199e0ded5001LRE6FdrhlXgVHz",
+          "quote": "We want the parent to know that we are finishing their children."
+        }
+      },
+      {
+        "order": 9,
+        "text": "Prefer leaf wake-up so that the parents are then woken recursively as each child finishes and passes its work upward.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199e0ded5001LRE6FdrhlXgVHz",
+          "quote": "preferably we wake up the leaf and then that will recursively wake up the parents whenever each child finishes and they will pass their stuff to the parent."
+        }
+      },
+      {
+        "order": 10,
+        "text": "Repeat until the root is reactivated with all descendants successfully finished.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "we repeat until the root agent is reactivated, with all descendants having successfully finished."
+        }
+      },
+      {
+        "order": 11,
+        "text": "Account for what happened since the chain died and avoid duplicating effort or results.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "time and turns - knowing what happened since the sub agent chain died, and respecting it/not duplicating effort or results."
+        }
+      },
+      {
+        "order": 12,
+        "text": "When existing investigations compete, recognize that deciding who did the work/investigation better may be necessary.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "then its a question of who did the work/investigation better"
+        }
+      },
+      {
+        "order": 13,
+        "text": "Account for behavior differences across timeout, internet-drop, and provider-credential errors under OpenCode controls.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+          "quote": "the diff in behavior from timeout, internet drop, open ai creds, with the diff types of errors, and agent-tree behavior based on those (oc controls)"
+        }
+      },
+      {
+        "order": 14,
+        "text": "Pin all agents involved, including orchestrators, to the intended model.",
+        "basis": "specified",
+        "provenance": {
+          "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_54",
+          "quote": "beware you must pin all agents involved to your own model, and orchs must do the same."
+        }
+      }
+    ]
+  },
+  {
+    "id": "F-02",
+    "title": "Root-driven discovery",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can identify all unfinished related work by pointing to where it began.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-02-V1",
+          "name": "Root-driven discovery",
+          "given": "The user identifies a root session that has child sessions.",
+          "when": "The user asks for work to continue from the root.",
+          "then": "The affected descendants are discovered without the user identifying each one."
+        }
+      ],
+      "invalidation": [
+        "The user must provide child IDs or a known child is omitted from the discovery result."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-02-01",
+          "slug": "f-02-descendants-discovered",
+          "description": "The affected descendants are discovered without the user identifying each one.",
+          "method": "manual",
+          "expected_values": {
+            "descendants_discovered": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#root-driven-discovery",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e228b5001YJpGILRCODUTZY",
+      "quote": "If I point you at the root, then you should have automatically went to the child sessions or the leaf agents.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [],
+    "notes": [
+      "Verified 2026-11-09: rootId entry with no child ids supplied — the demo invoked recovery with only the root id and discovery enumerated the full 1/2/4 family (7 sessions) before resuming. Evidence: docs/proof/f01v1-demo/ (attempt 9, root ses_e408c94f5ffewWj2xFGZsfC8z4)."
+    ],
+    "links": {
+      "storyId": "US-002",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-02-01"
+      ],
+      "skillDocRef": "docs/features/README.md#root-driven-discovery"
+    }
+  },
+  {
+    "id": "F-03",
+    "title": "Resume leaf and propagate to parent",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can ensure each contributor\u2019s result reaches the person coordinating the work, even when the preferred route is unavailable.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-03-V1",
+          "name": "Resume leaf and propagate to parent",
+          "given": "A child has resumed and has a direct parent waiting for its result.",
+          "when": "The child finishes its recovery work.",
+          "then": "The child preferably wakes its direct parent with its own result; otherwise the coordinator waits for and collects the child output, then passes it to that parent."
+        }
+      ],
+      "invalidation": [
+        "The result is delivered to the wrong ancestor, the preferred child-to-parent wake is unavailable without fallback, or the result is lost."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-03-01",
+          "slug": "f-03-direct-parent-receives-result",
+          "description": "The child preferably wakes its direct parent with its own result; otherwise the coordinator waits for and collects the child output, then passes it to that parent.",
+          "method": "manual",
+          "expected_values": {
+            "direct_parent_receives_result": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#resume-leaf-and-propagate-to-parent",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e0ded5001LRE6FdrhlXgVHz",
+      "quote": "either the child themselves should wake up their parent, which is preferred",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "What exact result payload and brief note should be passed?",
+      "Who coordinates if the child cannot wake its parent?"
+    ],
+    "notes": [
+      "End-to-end recovery composition is implemented via the tree.recover coordinator (leaf resume → separate handoffs → sibling barrier → upward bubbling); pending adversarial/live verification.",
+      "Recovery coordinator collects assistant output and stages one resume:false handoff to the direct parent; child agents do not independently wake parents.",
+      "Verified 2026-11-09: leaf resume plus parent propagation — 6 of 6 handoffs recorded parentResumed=true, and both mids reported their childrens results upward before the root was reactivated. Evidence: docs/proof/f01v1-demo/ (attempt 9, 6/6 parentResumed)."
+    ],
+    "links": {
+      "storyId": "US-003",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-03-01"
+      ],
+      "skillDocRef": "docs/features/README.md#resume-leaf-and-propagate-to-parent"
+    }
+  },
+  {
+    "id": "F-04",
+    "title": "Sibling recovery barrier",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can ensure related work is complete before the coordinator resumes.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-04-V1",
+          "name": "Sibling recovery barrier",
+          "given": "A parent has multiple children whose recovery is required.",
+          "when": "One sibling finishes before the others.",
+          "then": "The parent remains behind the barrier until all required siblings have completed."
+        }
+      ],
+      "invalidation": [
+        "The parent resumes while a required sibling is still unresolved."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-04-01",
+          "slug": "f-04-all-required-siblings-complete",
+          "description": "The parent remains behind the barrier until all required siblings have completed.",
+          "method": "manual",
+          "expected_values": {
+            "all_required_siblings_complete": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#sibling-recovery-barrier",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e0ded5001LRE6FdrhlXgVHz",
+      "quote": "we would have to Wait for both of those children before we really want the parent to get cooking",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Does the barrier include only failed children or every outstanding child?"
+    ],
+    "notes": [
+      "Verified 2026-11-09: sibling barrier — barrier blocks were observed in demo attempts 5-8 (a timed-out leaf held its parents and the root as blocked-barrier) and the barrier cleared on attempt 9 (barriers=[] with all 7 resumed). Evidence: docs/proof/f01v1-demo/ (attempts 5-9)."
+    ],
+    "links": {
+      "storyId": "US-004",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-04-01"
+      ],
+      "skillDocRef": "docs/features/README.md#sibling-recovery-barrier"
+    }
+  },
+  {
+    "id": "F-05",
+    "title": "Separate handoffs per child",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can identify who contributed each result.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-05-V1",
+          "name": "Separate handoffs per child",
+          "given": "More than one child has recovered work for the same parent.",
+          "when": "The child results are handed back.",
+          "then": "Each child result remains a separate, attributable handoff."
+        }
+      ],
+      "invalidation": [
+        "A combined handoff obscures which child produced which work."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-05-01",
+          "slug": "f-05-separate-attributed-handoffs",
+          "description": "Each child result remains a separate, attributable handoff.",
+          "method": "manual",
+          "expected_values": {
+            "separate_attributed_handoffs": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#separate-handoffs-per-child",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e40807001BLRGXI6IOev1RX",
+      "quote": "I did not say to combine their hand off. \u2026 keep it separate so that they can tell what each sub agent did.",
+      "confidence": "user-correction"
+    },
+    "ambiguities": [
+      "Should separate handoffs be ordered by completion time or tree order?"
+    ],
+    "notes": [
+      "User correction: do not combine child handoffs.",
+      "Separate queued messages are used for recovered direct children. If staging fails, the run aborts without merging or triggering the parent.",
+      "Verified 2026-11-09: separate handoffs — 6 handoffs, exactly one per recovered child, each delivered=true and parentResumed=true, never merged. Evidence: docs/proof/f01v1-demo/ (attempt 9, result.json handoffs)."
+    ],
+    "links": {
+      "storyId": "US-005",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-05-01"
+      ],
+      "skillDocRef": "docs/features/README.md#separate-handoffs-per-child"
+    }
+  },
+  {
+    "id": "F-06",
+    "title": "Failure-type-aware recovery",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can continue work appropriately after different kinds of interruption.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-06-V1",
+          "name": "Failure-type-aware recovery",
+          "given": "An agent stops making progress after an interruption.",
+          "when": "The recovery process identifies or is given the interruption type.",
+          "then": "The response accounts for connection loss, timeout, or provider-credit/credential failures and respects OpenCode controls."
+        }
+      ],
+      "invalidation": [
+        "The same blind retry is applied to materially different failures, or recovery violates OpenCode controls."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-06-01",
+          "slug": "f-06-failure-class-handled",
+          "description": "The response accounts for connection loss, timeout, or provider-credit/credential failures and respects OpenCode controls.",
+          "method": "manual",
+          "expected_values": {
+            "failure_class_handled": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#failure-type-aware-recovery",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_178",
+      "quote": "the types of errors we are fighting is usually internet connection dropping, or credits from ai provider running out",
+      "confidence": "user-correction"
+    },
+    "ambiguities": [
+      "What are the retry, wait, switch-model, and stop policies for each failure class?",
+      "Which failure signals are reliable and available?"
+    ],
+    "notes": [
+      "Some hook journaling exists; no complete classifier or recovery policy is established.",
+      "Credits/auth abort immediately; network errors retry the same prompt up to three total attempts; timeouts and unknown failures are reported without model changes.",
+      "Verified with two live proofs: credit-class run-wide stop — the Deal Pipe run recorded stoppedBy:\"credits\" on 2026-11-02, aborting the run rather than retrying; timeout-class one-attempt blocking — demo attempts 5-8 reported a transient leaf timeout as blocked-timeout for that attempt (rootReactivated=false) instead of retrying across the run, with the barrier holding the rest of the tree. Evidence: docs/proof/f01v1-demo/ (attempts 5-8) plus the 2026-11-02 Deal Pipe run."
+    ],
+    "links": {
+      "storyId": "US-006",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-06-01"
+      ],
+      "skillDocRef": "docs/features/README.md#failure-type-aware-recovery"
+    }
+  },
+  {
+    "id": "F-07",
+    "title": "Respect work completed since failure",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can resume work without repeating completed effort.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-07-V1",
+          "name": "Respect work completed since failure",
+          "given": "A chain has failed and some agents may have continued or completed work.",
+          "when": "Recovery inspects the state since the failure.",
+          "then": "Existing useful work is recognized and reused rather than duplicated."
+        }
+      ],
+      "invalidation": [
+        "Recovery repeats already-completed investigation or discards a better existing result."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-07-01",
+          "slug": "f-07-completed-work-reconciled",
+          "description": "Existing useful work is recognized and reused rather than duplicated.",
+          "method": "manual",
+          "expected_values": {
+            "completed_work_reconciled": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#respect-work-completed-since-failure",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_180",
+      "quote": "knowing what happened since the sub agent chain died, and respecting it/not duplicating effort or results\nthen its a question of who did the work/investigation better",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Which source of evidence wins when resumed messages, journals, and files disagree?",
+      "How should the system decide which of competing investigations is better?"
+    ],
+    "notes": [
+      "Completion accounting uses succeeded outcomes, recovery:done journal entries, and terminal successful assistant messages after the last error. Competing work quality is not ranked.",
+      "Verified 2026-11-09: work accounting — journaled alreadyComplete skips were observed across demo attempts 6-8 (alreadyComplete=4, no repeated work) and the Phase-4 journal gate required all 7 originals to finish succeeded with a recovery:done journal row. Evidence: docs/proof/f01v1-demo/ (attempts 6-9)."
+    ],
+    "links": {
+      "storyId": "US-007",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-07-01"
+      ],
+      "skillDocRef": "docs/features/README.md#respect-work-completed-since-failure"
+    }
+  },
+  {
+    "id": "F-08",
+    "title": "Family-wide relationship queries",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can understand how each contributor is related to others working on the task.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-08-V1",
+          "name": "Family-wide relationship queries",
+          "given": "An agent belongs to a multi-generation family tree.",
+          "when": "The user asks about its relatives.",
+          "then": "Parent, ancestor, and cousin relationships can be identified across the family."
+        }
+      ],
+      "invalidation": [
+        "A query only returns immediate parent/child relationships or gives an incorrect relation."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-08-01",
+          "slug": "f-08-family-relations-answered",
+          "description": "Parent, ancestor, and cousin relationships can be identified across the family.",
+          "method": "manual",
+          "expected_values": {
+            "family_relations_answered": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#family-wide-relationship-queries",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_209",
+      "quote": "all those in my family tree \u2026 who is my parent \u2026 grandparent \u2026 great grandparent \u2026 who are my cousins?",
+      "confidence": "user-correction"
+    },
+    "ambiguities": [
+      "Which relationship types and cousin degree should be supported?"
+    ],
+    "notes": [
+      "whoami and family queries exist; full relationship/work accounting is incomplete."
+    ],
+    "links": {
+      "storyId": "US-008",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-08-01"
+      ],
+      "skillDocRef": "docs/features/README.md#family-wide-relationship-queries"
+    }
+  },
+  {
+    "id": "F-09",
+    "title": "Resume recovery diagnostic",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can understand the context and history of resumed work without creating additional work.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-09-V1",
+          "name": "Resume recovery diagnostic",
+          "given": "An existing agent session is resumed.",
+          "when": "The resumed agent begins its work.",
+          "then": "The resumed agent reports its own session ID (from env | grep -i OPENCODE), session_v2.time_created and message count, direct parent ID from the database, root ID, and one line from memory about its original mission; it dispatches no sub-agent and uses at most 6 lines. The diagnostic prompt is this spec text verbatim as its prefix plus appended anti-loop guardrails (answer from existing context first, at most one shell command, no database queries, no sub-agent dispatch); the provenance quote itself is unchanged."
+        }
+      ],
+      "invalidation": [
+        "Any required diagnostic fact is absent, or showing the diagnostic creates new agents."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-09-01",
+          "slug": "f-09-resume-diagnostic-complete",
+          "description": "The resumed agent reports its own session ID (from env | grep -i OPENCODE), session_v2.time_created and message count, direct parent ID from the database, root ID, and one line from memory about its original mission; it dispatches no sub-agent and uses at most 6 lines. The engine prompt = original spec text (the provenance quote, verbatim and unchanged) + anti-loop guardrails appended after it.",
+          "method": "manual",
+          "expected_values": {
+            "resume_diagnostic_complete": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#resume-recovery-diagnostic",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_217",
+      "quote": "You are being resumed. Report only: your own session id from env | grep -i OPENCODE, your session_v2.time_created and message count, your direct parent id from the db, the root id, and one line from memory about what your original mission told you to do. Do not dispatch any sub-agent. Max 6 lines.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "What exact presentation and retention period are wanted for the diagnostic?"
+    ],
+    "notes": [
+      "Verified 2026-11-09: the recovery diagnostic was injected verbatim with guardrails and stayed within the 6-line report cap in attempts 5-9. Evidence: docs/proof/f01v1-demo/ (result.json diagnostics; attempt logs)."
+    ],
+    "links": {
+      "storyId": "US-009",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-09-01"
+      ],
+      "skillDocRef": "docs/features/README.md#resume-recovery-diagnostic"
+    }
+  },
+  {
+    "id": "F-10",
+    "title": "Consistent model across an agent tree",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can keep everyone working on a task aligned with my intended model.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-10-V1",
+          "name": "Consistent model across an agent tree",
+          "given": "A task is being handled by an orchestrator and related agents.",
+          "when": "The task begins or an agent is resumed.",
+          "then": "Every involved agent and orchestrator uses the intended model."
+        }
+      ],
+      "invalidation": [
+        "Any agent in the tree runs under a different unintended model."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-10-01",
+          "slug": "f-10-tree-model-consistent",
+          "description": "Every involved agent and orchestrator uses the intended model.",
+          "method": "manual",
+          "expected_values": {
+            "tree_model_consistent": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#consistent-model-across-an-agent-tree",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_54",
+      "quote": "you must pin all agents involved to your own model, and orchs must do the same.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Does model selection inherit from the root or must every level be explicitly pinned?"
+    ],
+    "notes": [
+      "Recovery optionally pins every session it resumes when pinModel is supplied; by default it leaves existing session models unchanged."
+    ],
+    "links": {
+      "storyId": "US-010",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-10-01"
+      ],
+      "skillDocRef": "docs/features/README.md#consistent-model-across-an-agent-tree"
+    }
+  },
+  {
+    "id": "F-11",
+    "title": "Change tree model before restart",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can change how a task is handled before its work resumes.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-11-V1",
+          "name": "Change tree model before restart",
+          "given": "An agent tree is paused or needs restart.",
+          "when": "The user changes its provider/model and restarts.",
+          "then": "The restarted tree uses the newly selected provider/model."
+        }
+      ],
+      "invalidation": [
+        "The restart uses stale provider/model settings or changes only some tree members."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-11-01",
+          "slug": "f-11-restart-uses-selected-model",
+          "description": "The restarted tree uses the newly selected provider/model.",
+          "method": "manual",
+          "expected_values": {
+            "restart_uses_selected_model": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#change-tree-model-before-restart",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_730",
+      "quote": "make sure that we can change the model+provider of an agent tree as well, usually before hitting restart.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Should the selection apply to existing descendants only, future descendants, or both?"
+    ],
+    "notes": [],
+    "links": {
+      "storyId": "US-011",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-11-01"
+      ],
+      "skillDocRef": "docs/features/README.md#change-tree-model-before-restart"
+    }
+  },
+  {
+    "id": "F-12",
+    "title": "Per-session recovery depth",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can choose how much related work is examined for each session.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-12-V1",
+          "name": "Per-session recovery depth",
+          "given": "Two sessions need different recovery depth.",
+          "when": "The user chooses a depth for one session.",
+          "then": "That session uses its chosen depth without silently changing the other session."
+        }
+      ],
+      "invalidation": [
+        "Depth is global-only, ignored, or leaks between sessions."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-12-01",
+          "slug": "f-12-session-depth-isolated",
+          "description": "That session uses its chosen depth without silently changing the other session.",
+          "method": "manual",
+          "expected_values": {
+            "session_depth_isolated": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#per-session-recovery-depth",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_213",
+      "quote": "I would actually like to be able to change the depth per session.",
+      "confidence": "user-correction"
+    },
+    "ambiguities": [
+      "What are the depth values, default, and inheritance behavior?"
+    ],
+    "notes": [],
+    "links": {
+      "storyId": "US-012",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-12-01"
+      ],
+      "skillDocRef": "docs/features/README.md#per-session-recovery-depth"
+    }
+  },
+  {
+    "id": "F-13",
+    "title": "Emulate OpenCode core restart recovery",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can know whether restart recovery can behave consistently with OpenCode\u2019s own recovery.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-13-V1",
+          "name": "Emulate OpenCode core restart recovery",
+          "given": "OpenCode core restart-recovery behavior and this approach are available for comparison.",
+          "when": "The recovery design is evaluated.",
+          "then": "The comparison identifies behavior that can or cannot be emulated and informs the recovery experience."
+        }
+      ],
+      "invalidation": [
+        "No comparison exists, or an emulation claim is made without a documented comparison."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-13-01",
+          "slug": "f-13-recovery-comparison-documented",
+          "description": "The comparison identifies behavior that can or cannot be emulated and informs the recovery experience.",
+          "method": "manual",
+          "expected_values": {
+            "recovery_comparison_documented": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#emulate-opencode-core-restart-recovery",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_730",
+      "quote": "We need to really compare the opencode core recovery mechanism to our approach, see if we can emulate.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Which core recovery behaviors are in scope for emulation?",
+      "Does core-restart emulation live in this plugin?"
+    ],
+    "notes": [
+      "Research is reported done; the emulation is not implemented."
+    ],
+    "links": {
+      "storyId": "US-013",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-13-01"
+      ],
+      "skillDocRef": "docs/features/README.md#emulate-opencode-core-restart-recovery"
+    }
+  },
+  {
+    "id": "F-14",
+    "title": "Work with existing agent trees",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can work with related sessions that existed before I started using this capability.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-14-V1",
+          "name": "Work with existing agent trees",
+          "given": "An agent tree existed before the plugin-managed workflow began.",
+          "when": "The user asks the plugin to work with that tree.",
+          "then": "The existing tree can be discovered and managed without recreating it."
+        }
+      ],
+      "invalidation": [
+        "Only trees created by the plugin can be used."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-14-01",
+          "slug": "f-14-existing-tree-supported",
+          "description": "The existing tree can be discovered and managed without recreating it.",
+          "method": "manual",
+          "expected_values": {
+            "existing_tree_supported": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#work-with-existing-agent-trees",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_730",
+      "quote": "we need to see the plugin work on an existing session tree.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Which existing tree shapes and session origins must be supported?"
+    ],
+    "notes": [],
+    "links": {
+      "storyId": "US-014",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-14-01"
+      ],
+      "skillDocRef": "docs/features/README.md#work-with-existing-agent-trees"
+    }
+  },
+  {
+    "id": "F-15",
+    "title": "Agent-tree management",
+    "status": "implemented",
+    "lifecycle": "accepted",
+    "story": "I can understand and manage the agents working together on a task.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-15-V1",
+          "name": "Agent-tree management",
+          "given": "Agents have been created as a related family for a task.",
+          "when": "The user needs to inspect or manage that family.",
+          "then": "The tree can be managed as a related group, beyond merely creating it."
+        }
+      ],
+      "invalidation": [
+        "The capability only creates agents and cannot manage the resulting family."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-15-01",
+          "slug": "f-15-tree-management-available",
+          "description": "The tree can be managed as a related group, beyond merely creating it.",
+          "method": "manual",
+          "expected_values": {
+            "tree_management_available": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#agent-tree-management",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_398",
+      "quote": "One of them makes the agent \u2026 start creating trees of families of agents. And then this tool is to manage those trees.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Which management actions are in the minimum user-facing scope?"
+    ],
+    "notes": [
+      "Management now includes recursive recovery and NRR discovery; changing session models outside recovery and arbitrary tree mutation remain out of scope.",
+      "Exercised on the existing Deal Pipe tree 2026-11-02 (agent-tree management over a real tree); the root was not reactivated, so this remains implemented rather than verified."
+    ],
+    "links": {
+      "storyId": "US-015",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-15-01"
+      ],
+      "skillDocRef": "docs/features/README.md#agent-tree-management"
+    }
+  },
+  {
+    "id": "F-16",
+    "title": "Setup documentation and orchestrator cross-reference",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can set up the capability and find its relationship to the coordinating workflow.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-16-V1",
+          "name": "Setup documentation and orchestrator cross-reference",
+          "given": "A user or maintainer is setting up the capability alongside an orchestrator.",
+          "when": "They follow setup guidance and navigate between the two projects\u2019 guidance.",
+          "then": "Setup is documented and each side points to the other."
+        }
+      ],
+      "invalidation": [
+        "Setup is undocumented or either cross-reference is missing."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-16-01",
+          "slug": "f-16-setup-and-cross-reference-present",
+          "description": "Setup is documented and each side points to the other.",
+          "method": "manual",
+          "expected_values": {
+            "setup_and_cross_reference_present": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#setup-documentation-and-orchestrator-cross-reference",
+      "status": "present",
+      "reason": "Setup and reciprocal documentation expectations are covered in the feature-system README."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_398",
+      "quote": "should be a in a readme for the setup\nthe orchestrator should probably mention this, and then this should probably mention the orchestrator",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Which orchestrator document is the canonical reciprocal link target?"
+    ],
+    "notes": [
+      "This feature record and README establish the feature-first documentation surface; project setup cross-links remain partial."
+    ],
+    "links": {
+      "storyId": "US-016",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-16-01"
+      ],
+      "skillDocRef": "docs/features/README.md#setup-documentation-and-orchestrator-cross-reference"
+    }
+  },
+  {
+    "id": "F-17",
+    "title": "Publishable standalone project",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can share this capability with others so they can work with agents.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-17-V1",
+          "name": "Publishable standalone project",
+          "given": "The project is ready to be shared beyond its original developer.",
+          "when": "A new user obtains the project.",
+          "then": "The project can be found and used by another person with setup guidance."
+        }
+      ],
+      "invalidation": [
+        "The project has no usable publication/distribution path."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-17-01",
+          "slug": "f-17-project-shareable",
+          "description": "The project can be found and used by another person with setup guidance.",
+          "method": "manual",
+          "expected_values": {
+            "project_shareable": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#publishable-standalone-project",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_454",
+      "quote": "we can actually publish it so that we can give other people the ability to work with the agents",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Which license, hosting destination, and release channel are intended?"
+    ],
+    "notes": [
+      "A separate repository exists; no remote or publication is recorded."
+    ],
+    "links": {
+      "storyId": "US-017",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-17-01"
+      ],
+      "skillDocRef": "docs/features/README.md#publishable-standalone-project"
+    }
+  },
+  {
+    "id": "F-18",
+    "title": "Idempotent orchestrator-profile install",
+    "status": "not-implemented",
+    "lifecycle": "proposed",
+    "story": "I can repeat setup without creating duplicate or conflicting setup.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-18-V1",
+          "name": "Idempotent orchestrator-profile install",
+          "given": "A user installs or repeats installation of the plugin\u2019s optional setup.",
+          "when": "The profile-install action is run more than once.",
+          "then": "If this idea is accepted, repeated installation leaves one correct profile without duplicate or destructive changes."
+        }
+      ],
+      "invalidation": [
+        "Repeated runs create duplicate configuration or alter unrelated setup."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-18-01",
+          "slug": "f-18-repeat-install-safe",
+          "description": "If this idea is accepted, repeated installation leaves one correct profile without duplicate or destructive changes.",
+          "method": "manual",
+          "expected_values": {
+            "repeat_install_safe": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#idempotent-orchestrator-profile-install",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_454",
+      "quote": "maybe that scripting should be part of the plugin \u2026 that would have to be item potent.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Should profile installation be part of the plugin or remain a separate setup step?",
+      "What configuration may installation change?"
+    ],
+    "notes": [
+      "Tentative idea only; it has not been settled as plugin scope."
+    ],
+    "links": {
+      "storyId": "US-018",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-18-01"
+      ],
+      "skillDocRef": "docs/features/README.md#idempotent-orchestrator-profile-install"
+    }
+  },
+  {
+    "id": "F-19",
+    "title": "Agent-tree visualizer placement",
+    "status": "not-implemented",
+    "lifecycle": "proposed",
+    "story": "I can tell where the view of related work belongs.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-19-V1",
+          "name": "Agent-tree visualizer placement",
+          "given": "A user is considering how to view an agent tree.",
+          "when": "The visualizer\u2019s product boundary is decided.",
+          "then": "A decision is recorded on whether the visualizer is an OpenChamber extension or a separate project."
+        }
+      ],
+      "invalidation": [
+        "The visualizer is treated as settled plugin scope despite the user expressing uncertainty."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-19-01",
+          "slug": "f-19-visualizer-boundary-decided",
+          "description": "A decision is recorded on whether the visualizer is an OpenChamber extension or a separate project.",
+          "method": "manual",
+          "expected_values": {
+            "visualizer_boundary_decided": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#agent-tree-visualizer-placement",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_398",
+      "quote": "that might have been an open chamber extension. So I guess this could be separate.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Should the visualizer be an OpenChamber extension, a plugin feature, or a separate project?"
+    ],
+    "notes": [
+      "This is a tracked placement question, not a claim that a visualizer has been specified."
+    ],
+    "links": {
+      "storyId": "US-019",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-19-01"
+      ],
+      "skillDocRef": "docs/features/README.md#agent-tree-visualizer-placement"
+    }
+  },
+  {
+    "id": "F-20",
+    "title": "View the full live agent tree",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can understand all active work related to a task.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-20-V1",
+          "name": "View the full live agent tree",
+          "given": "Multiple agents are active in a task tree.",
+          "when": "The user opens the tree view.",
+          "then": "Every active agent and its relationship is visible in one complete tree."
+        }
+      ],
+      "invalidation": [
+        "An active agent or its parent/child relationship is missing."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-20-01",
+          "slug": "f-20-full-live-tree-visible",
+          "description": "Every active agent and its relationship is visible in one complete tree.",
+          "method": "manual",
+          "expected_values": {
+            "full_live_tree_visible": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#view-the-full-live-agent-tree",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e27d03001K2ke3cRQcrbybk",
+      "quote": "See the full live tree of active agents",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Which live statuses count as active and how fresh must the view be?"
+    ],
+    "notes": [
+      "Spec-derived explorer story; this wording is not represented as a direct user quote in the inventory.",
+      "Provenance caveat: explorer wording is spec-derived, not a direct user quote, as identified in the source inventory."
+    ],
+    "links": {
+      "storyId": "US-020",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-20-01"
+      ],
+      "skillDocRef": "docs/features/README.md#view-the-full-live-agent-tree"
+    }
+  },
+  {
+    "id": "F-21",
+    "title": "Color nodes by status",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can distinguish the current state of each piece of related work at a glance.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-21-V1",
+          "name": "Color nodes by status",
+          "given": "The tree contains agents in different statuses.",
+          "when": "The user scans the tree.",
+          "then": "Each node\u2019s color communicates its status consistently."
+        }
+      ],
+      "invalidation": [
+        "Different statuses are indistinguishable or color communicates an incorrect status."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-21-01",
+          "slug": "f-21-status-colors-distinguishable",
+          "description": "Each node\u2019s color communicates its status consistently.",
+          "method": "manual",
+          "expected_values": {
+            "status_colors_distinguishable": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#color-nodes-by-status",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e27d03001K2ke3cRQcrbybk",
+      "quote": "See each node color-coded by status",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "What statuses and accessible non-color cues are required?"
+    ],
+    "notes": [
+      "Spec-derived explorer story; this wording is not represented as a direct user quote in the inventory.",
+      "Provenance caveat: explorer wording is spec-derived, not a direct user quote, as identified in the source inventory."
+    ],
+    "links": {
+      "storyId": "US-021",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-21-01"
+      ],
+      "skillDocRef": "docs/features/README.md#color-nodes-by-status"
+    }
+  },
+  {
+    "id": "F-22",
+    "title": "Group agents by dispatch wave",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can tell which pieces of related work began together.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-22-V1",
+          "name": "Group agents by dispatch wave",
+          "given": "Sub-agents were released in one or more waves.",
+          "when": "The user examines the tree.",
+          "then": "Agents are visibly grouped by their dispatch wave."
+        }
+      ],
+      "invalidation": [
+        "Wave membership is absent or agents are grouped into the wrong wave."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-22-01",
+          "slug": "f-22-dispatch-waves-grouped",
+          "description": "Agents are visibly grouped by their dispatch wave.",
+          "method": "manual",
+          "expected_values": {
+            "dispatch_waves_grouped": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#group-agents-by-dispatch-wave",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e27d03001K2ke3cRQcrbybk",
+      "quote": "See sub-agents grouped by the wave that released them",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "How is a wave defined when dispatches overlap or retry?"
+    ],
+    "notes": [
+      "Spec-derived explorer story; this wording is not represented as a direct user quote in the inventory.",
+      "Provenance caveat: explorer wording is spec-derived, not a direct user quote, as identified in the source inventory."
+    ],
+    "links": {
+      "storyId": "US-022",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-22-01"
+      ],
+      "skillDocRef": "docs/features/README.md#group-agents-by-dispatch-wave"
+    }
+  },
+  {
+    "id": "F-23",
+    "title": "Trace recursive agent creation",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can follow how work branched into further work.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-23-V1",
+          "name": "Trace recursive agent creation",
+          "given": "An agent has created one or more descendants.",
+          "when": "The user follows the family tree.",
+          "then": "Each generation can be traced to the agent that created it."
+        }
+      ],
+      "invalidation": [
+        "A child or grandchild is detached from its originating parent."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-23-01",
+          "slug": "f-23-recursive-lineage-traceable",
+          "description": "Each generation can be traced to the agent that created it.",
+          "method": "manual",
+          "expected_values": {
+            "recursive_lineage_traceable": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#trace-recursive-agent-creation",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e27d03001K2ke3cRQcrbybk",
+      "quote": "Trace recursion (children spawning grandchildren)",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "What maximum displayed depth is needed?"
+    ],
+    "notes": [
+      "Spec-derived explorer story; this wording is not represented as a direct user quote in the inventory.",
+      "Provenance caveat: explorer wording is spec-derived, not a direct user quote, as identified in the source inventory."
+    ],
+    "links": {
+      "storyId": "US-023",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-23-01"
+      ],
+      "skillDocRef": "docs/features/README.md#trace-recursive-agent-creation"
+    }
+  },
+  {
+    "id": "F-24",
+    "title": "Read-only agent-tree view",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can inspect related work without changing it.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-24-V1",
+          "name": "Read-only agent-tree view",
+          "given": "The user opens the agent-tree view.",
+          "when": "The user navigates or selects information in the view.",
+          "then": "The view exposes information while making no changes to agent state or work."
+        }
+      ],
+      "invalidation": [
+        "Any view interaction changes an agent, session, or work state."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-24-01",
+          "slug": "f-24-tree-view-read-only",
+          "description": "The view exposes information while making no changes to agent state or work.",
+          "method": "manual",
+          "expected_values": {
+            "tree_view_read_only": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#read-only-agent-tree-view",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e27d03001K2ke3cRQcrbybk",
+      "quote": "Interact with a strictly read-only view",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Are copy/export actions allowed if they do not mutate the tree?"
+    ],
+    "notes": [
+      "Spec-derived explorer story; this wording is not represented as a direct user quote in the inventory.",
+      "Provenance caveat: explorer wording is spec-derived, not a direct user quote, as identified in the source inventory."
+    ],
+    "links": {
+      "storyId": "US-024",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-24-01"
+      ],
+      "skillDocRef": "docs/features/README.md#read-only-agent-tree-view"
+    }
+  },
+  {
+    "id": "F-25",
+    "title": "Read the tree timeline by wave",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can understand how work unfolded over time and branched into waves.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-25-V1",
+          "name": "Read the tree timeline by wave",
+          "given": "The tree has events across multiple dispatch waves.",
+          "when": "The user reads its timeline.",
+          "then": "Earlier activity appears before later activity and branches fan out by wave."
+        }
+      ],
+      "invalidation": [
+        "The sequence is misleading or wave branches cannot be followed."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-25-01",
+          "slug": "f-25-wave-timeline-readable",
+          "description": "Earlier activity appears before later activity and branches fan out by wave.",
+          "method": "manual",
+          "expected_values": {
+            "wave_timeline_readable": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#read-the-tree-timeline-by-wave",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199e27d03001K2ke3cRQcrbybk",
+      "quote": "Read the timeline top-to-bottom with waves fanning out",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Which events belong on the timeline and what is the time-ordering rule?"
+    ],
+    "notes": [
+      "Spec-derived explorer story; this wording is not represented as a direct user quote in the inventory.",
+      "Provenance caveat: explorer wording is spec-derived, not a direct user quote, as identified in the source inventory."
+    ],
+    "links": {
+      "storyId": "US-025",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-25-01"
+      ],
+      "skillDocRef": "docs/features/README.md#read-the-tree-timeline-by-wave"
+    }
+  },
+  {
+    "id": "F-26",
+    "title": "Install and test on a failed session",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can use the capability in OpenCode and confirm it recovers an actual failed session.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-26-V1",
+          "name": "Install and test on a failed session",
+          "given": "The plugin has been added to a test configuration and a failed session is available.",
+          "when": "The user asks for an end-to-end test on that session.",
+          "then": "The plugin is exercised against the pointed-to failure and the result is verified."
+        }
+      ],
+      "invalidation": [
+        "Only installation is shown, or the failed session/root-driven recovery test remains unsatisfied."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-26-01",
+          "slug": "f-26-failed-session-test-verified",
+          "description": "The plugin is exercised against the pointed-to failure and the result is verified.",
+          "method": "mixed",
+          "expected_values": {
+            "failed_session_test_verified": "true"
+          },
+          "evidence": "Observable session/tree state and a recorded recovery result; capture a screenshot or structured event when available.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#install-and-test-on-a-failed-session",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_528 / msg_199dd1a64001gFayw1KkAJbIMA_543 / msg_199dd1a64001gFayw1KkAJbIMA_560",
+      "quote": "bro did you add it to our opencode or what?\nhow to use it? if i want to restart sesh ses_e721f8491ffeBfnjVh1ApRv4Wq\ntry it with that one.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Which exact failed session is the canonical regression fixture?"
+    ],
+    "notes": [
+      "Added to a test config; live verification failed and the root-driven test remains unsatisfied."
+    ],
+    "links": {
+      "storyId": "US-026",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-26-01"
+      ],
+      "skillDocRef": "docs/features/README.md#install-and-test-on-a-failed-session"
+    }
+  },
+  {
+    "id": "F-27",
+    "title": "Distinguish good restart from failed-leaf recovery",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can distinguish ordinary continuation after a restart from recovery of work interrupted by failure.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-27-V1",
+          "name": "Distinguish good restart from failed-leaf recovery",
+          "given": "A successful continuation after restart and a failed-leaf recovery are being compared.",
+          "when": "The scenarios are evaluated.",
+          "then": "They are treated as separate sessions and separate cases."
+        }
+      ],
+      "invalidation": [
+        "Evidence from the good restart is presented as proof of failed-leaf recovery, or vice versa."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-27-01",
+          "slug": "f-27-restart-cases-separated",
+          "description": "They are treated as separate sessions and separate cases.",
+          "method": "manual",
+          "expected_values": {
+            "restart_cases_separated": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#distinguish-good-restart-from-failed-leaf-recovery",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_643",
+      "quote": "So the continue after restart happened in a separate session\nThese are two separate sessions.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "What exact evidence distinguishes the two scenarios in regression tests?"
+    ],
+    "notes": [
+      "Research is reported done; behavior is not implemented as recovery."
+    ],
+    "links": {
+      "storyId": "US-027",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-27-01"
+      ],
+      "skillDocRef": "docs/features/README.md#distinguish-good-restart-from-failed-leaf-recovery"
+    }
+  },
+  {
+    "id": "F-28",
+    "title": "Share local and remote session history",
+    "status": "not-implemented",
+    "lifecycle": "proposed",
+    "story": "I can access the same conversation history from both places I work.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-28-V1",
+          "name": "Share local and remote session history",
+          "given": "The user has local and remote OpenCode instances with separate histories.",
+          "when": "The user switches between those instances.",
+          "then": "The desired shared history/database is available across both instances."
+        }
+      ],
+      "invalidation": [
+        "The histories diverge or the same database cannot be used from both instances."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-28-01",
+          "slug": "f-28-shared-history-available",
+          "description": "The desired shared history/database is available across both instances.",
+          "method": "manual",
+          "expected_values": {
+            "shared_history_available": "true"
+          },
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#share-local-and-remote-session-history",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_892",
+      "quote": "I think I want remote's open code and my local open code to share the same database",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "Is shared history still desired after the V1/V2 migration, and what data-sharing boundary is acceptable?"
+    ],
+    "notes": [
+      "Adjacent V1/V2 migration and shared-history scope; tracked here but explicitly out of scope for the agent-tree plugin.",
+      "Out of scope for the agent-tree plugin; retained as adjacent tracked scope."
+    ],
+    "links": {
+      "storyId": "US-028",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-28-01"
+      ],
+      "skillDocRef": "docs/features/README.md#share-local-and-remote-session-history"
+    }
+  },
+  {
+    "id": "F-29",
+    "title": "Operational migration checklist",
+    "status": "partial",
+    "lifecycle": "accepted",
+    "story": "I can move the work into its intended environment and confirm each required step.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-29-V1",
+          "name": "Operational migration checklist",
+          "given": "A migration is planned across the current and intended OpenCode environments.",
+          "when": "The operator works through requirements 0\u20135.",
+          "then": "Each of the six source requirements is accounted for: compare core recovery/emulation; update and restart OpenCode; verify the V1 database backup and move V2 out of the test directory; continue using the V2 database; allow changing an agent tree model/provider (usually before restart); and test the plugin on an existing session tree."
+        }
+      ],
+      "invalidation": [
+        "Any numbered requirement is skipped or the migration is declared complete without its verification."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-29-01",
+          "slug": "f-29-migration-requirements-accounted",
+          "description": "Each of the six source requirements is accounted for: compare core recovery/emulation; update and restart OpenCode; verify the V1 database backup and move V2 out of the test directory; continue using the V2 database; allow changing an agent tree model/provider (usually before restart); and test the plugin on an existing session tree.",
+          "method": "mixed",
+          "expected_values": {
+            "migration_requirements_accounted": "true"
+          },
+          "evidence": "A requirement-by-requirement record for all six source requirements: (0) compare OpenCode core recovery with our approach; (1) update and restart OpenCode; (2) verify the V1 database is backed up and move V2 out of the test directory; (3) continue using the V2 database; (4) change an agent tree's model and provider before restart; (5) verify the plugin works on an existing session tree.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/features/README.md#operational-migration-checklist",
+      "status": "planned",
+      "reason": "Feature-specific how-to documentation is planned; this path is a placeholder until that document is authored."
+    },
+    "provenance": {
+      "messageId": "msg_199dd1a64001gFayw1KkAJbIMA_730",
+      "quote": "0. We need to really compare the opencode core recovery mechanism to our approach, see if we can emulate. it could be very graceful, and more condoned. but we dont try to be perfect. working is better than done.\n1. We need to update and restart opencode. \n2. We need to verify our v1 db is backed up, and get our opencode v2 out of a test dir.\n3. We need to make sure we continue to use our opencode v2 db afterward.\n4. We need to make sure that we can change the model+provider of an agent tree as well, usually before hitting restart.\n5. we need to see the plugin work on an existing session tree.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "What are the exact acceptance checks and rollback point for each numbered requirement?"
+    ],
+    "notes": [],
+    "links": {
+      "storyId": "US-029",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-29-01"
+      ],
+      "skillDocRef": "docs/features/README.md#operational-migration-checklist"
+    }
+  },
+  {
+    "id": "F-30",
+    "title": "NRR-prefixed recovery discovery",
+    "status": "implemented",
+    "lifecycle": "accepted",
+    "story": "I can recover one clearly marked failed conversation without finding its session ID.",
+    "jobStory": null,
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-30-V1",
+          "name": "Recover a single NRR conversation",
+          "given": "Exactly one session title begins with the NRR marker (bare or parenthesized, e.g. `(nrr)`) and its tree is recoverable.",
+          "when": "The user invokes recovery without a root ID.",
+          "then": "That conversation is recovered recursively from leaves to root."
+        },
+        {
+          "id": "F-30-V2",
+          "name": "Disambiguate multiple NRR conversations",
+          "given": "More than one session title begins with the NRR marker (bare or parenthesized, e.g. `(nrr)`).",
+          "when": "The user invokes recovery without a root ID.",
+          "then": "The matching candidates are returned and no session is prompted."
+        }
+      ],
+      "invalidation": [
+        "Multiple marker-matched candidates are resumed in one invocation, or a title that does not match the configured marker is selected."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-30-01",
+          "slug": "f-30-nrr-discovery-is-unambiguous",
+          "description": "Recovery selects exactly one marker-matched session or returns multiple candidates without prompting any session.",
+          "method": "automated",
+          "expected_values": {
+            "nrr_discovery_is_unambiguous": "true"
+          },
+          "evidence": "Automated discovery tests asserting candidate sets and prompt call counts.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": "RT-F-30",
+      "ref": "README.md#optional-nrr-marker-discovery",
+      "reason": "Optional convenience for entering the recursive recovery routine when the user omits a session ID.",
+      "trigger": "manual",
+      "inputs": [
+        "Optional title-marker discovery (default nrr) when no session ID is supplied; otherwise use the root/session ID entry path"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "discover",
+          "target": "sessions beginning with the configured marker",
+          "description": "Find titles beginning with the configured marker (bare or parenthesized); proceed only when there is exactly one match."
+        },
+        {
+          "order": 2,
+          "action": "recover",
+          "target": "single matching session tree",
+          "description": "Apply the recursive recovery routine to the unique candidate."
+        }
+      ]
+    },
+    "skillDoc": {
+      "ref": "README.md#optional-nrr-marker-discovery",
+      "status": "present",
+      "reason": "The README documents marker discovery as optional sugar and its no-batch safety rule."
+    },
+    "provenance": {
+      "messageId": "current-session:2026-11-01-orchestrator",
+      "quote": "I've started to mark some of my conversations with a prefix on the title. NRR. its a problem please fix.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [],
+    "notes": [
+      "Discovery is intentionally fail-closed: zero matches do nothing; multiple matches return candidates without prompts.",
+      "Observed in the rig DB on 2026-11-02: titles use lowercase `(nrr)`; the matcher accepts bare or parenthesized markers, case-insensitively. Observed titles included `(nrr) Social Media Posting Implementation`, `(nrr) Part II - Deal Pipe - Retro, Images, Available - Blast List`, `(nrr) Flexible deal intake via email`, and `(nrr) Apify spike: staffing agencies near I-10/Uvalde`.",
+      "Optional discovery convenience — Jordan is unsure about permanence (2026-11-02). Primary entry point is tree.recover({rootId}) accepting any session id (climbs to true root); marker discovery is sugar.",
+      "Discovery verified via dry-run 2026-11-02: NRR-prefixed candidates were listed with zero prompts issued; remains implemented because marker discovery has not yet been exercised as a live recovery entry point."
+    ],
+    "links": {
+      "storyId": "US-030",
+      "routineId": "RT-F-30",
+      "proofIds": [
+        "PC-F-30-01"
+      ],
+      "skillDocRef": "README.md#optional-nrr-marker-discovery"
+    }
+  }
+]

@@ -50,16 +50,16 @@ test("tree_journal append defaults to the calling session, read returns it back"
   assert.deepEqual(entries[0]!.metadata, { phase: 1 })
 })
 
-test("tree_handoff journals on the child and pushes into the child's PARENT with resume", async () => {
+test("tree_handoff sends a concise provenance report to the child's actual parent", async () => {
   const { ctx, tools, calls } = harness()
   seedFamily(ctx, {
-    ses_parent: { agent: "orchestrator", title: "parent" },
+    ses_parent: { agent: "orchestrator", title: "parent", outcome: "succeeded" },
     ses_dead: { parentID: "ses_parent", agent: "general", title: "dead child", outcome: "failed" },
   })
 
   const result = (await tools.handoff.execute(
     { childID: "ses_dead", summary: "Go usage limit exceeded", note: "pin the model" },
-    caller,
+    { ...caller, sessionID: "ses_parent" },
   )) as { content: string }
   const out = JSON.parse(result.content) as Record<string, unknown>
 
@@ -73,10 +73,36 @@ test("tree_handoff journals on the child and pushes into the child's PARENT with
   assert.equal(calls[0]!.resume, true)
   assert.equal(
     calls[0]!.text,
-    "Your child ses_dead died. Here is what it reported: Go usage limit exceeded. Note: pin the model.",
+    "Agent-tree handoff from ses_parent: child ses_dead (parent ses_parent) died. Here is what it reported: Go usage limit exceeded. Note: pin the model.",
   )
   assert.equal(out.target, "ses_parent")
   assert.deepEqual(out.prompt, { id: "msg_fake", sessionID: "ses_parent", type: "user" })
+})
+
+test("tree_handoff allows tree-wide descendants but rejects sessions from another family", async () => {
+  const { ctx, tools, calls } = harness()
+  seedFamily(ctx, {
+    ses_root: { agent: "orchestrator", title: "root" },
+    ses_parent: { parentID: "ses_root", agent: "general", title: "parent" },
+    ses_child: { parentID: "ses_parent", agent: "general", title: "child", outcome: "succeeded" },
+    ses_other_root: { agent: "orchestrator", title: "other root" },
+    ses_other_child: { parentID: "ses_other_root", agent: "general", title: "unrelated" },
+  })
+
+  await tools.handoff.execute(
+    { childID: "ses_child", summary: "nested work complete" },
+    { ...caller, sessionID: "ses_root" },
+  )
+  assert.equal(calls[0]!.sessionID, "ses_parent")
+
+  await assert.rejects(
+    () => tools.handoff.execute(
+      { childID: "ses_other_child", summary: "not ours" },
+      { ...caller, sessionID: "ses_root" },
+    ),
+    /outside the caller's session family/i,
+  )
+  assert.equal(calls.length, 1)
 })
 
 test("tree_handoff refuses a session with no parent instead of guessing a target", async () => {

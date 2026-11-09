@@ -1,10 +1,13 @@
 // The handoff message is the artifact a parent actually reads. Keep the shape
 // stable: parents, tests, and humans all pattern-match on it.
 //
-//   Your child <childID> <finished|died>. Here is what it reported: <summary>. Note: <note>
+//   Agent-tree handoff from <reporterID>: child <childID> (parent <parentID>) <finished|died>.
+//   Here is what it reported: <summary>. Note: <note>
 
 export interface HandoffInput {
+  reporterID: string
   childID: string
+  parentID: string
   outcome: "finished" | "died"
   summary: string
   note?: string | undefined
@@ -16,7 +19,10 @@ function sentence(text: string): string {
 }
 
 export function formatHandoff(input: HandoffInput): string {
-  const parts = [`Your child ${input.childID} ${input.outcome}.`, `Here is what it reported: ${sentence(input.summary)}`]
+  const parts = [
+    `Agent-tree handoff from ${input.reporterID}: child ${input.childID} (parent ${input.parentID}) ${input.outcome}.`,
+    `Here is what it reported: ${sentence(input.summary)}`,
+  ]
   if (input.note && input.note.trim().length) parts.push(`Note: ${sentence(input.note)}`)
   return parts.join(" ")
 }

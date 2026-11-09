@@ -10,9 +10,10 @@ import { Plugin } from "@opencode/plugin"
 import { appendEntry } from "./lib/journal.ts"
 import { extractChildID } from "./lib/child-dispatch.ts"
 import type { SessionLike } from "./lib/family.ts"
+import type { RecoveryListInput, RecoverSession } from "./lib/recover.ts"
 import { createTreeTools, TREE_NAMESPACE } from "./tools.ts"
 
-const CHILD_TOOL = /(^|_)(subagent|task|spawn)(_|$)/i
+const CHILD_TOOL = /(^|[._-])(subagent|task|spawn)([._-]|$)/i
 
 export default Plugin.define({
   id: "agent-trees",
@@ -28,13 +29,28 @@ export default Plugin.define({
       }
     }
 
-    const listChildren = async (parentID: string): Promise<readonly SessionLike[]> => {
-      try {
-        const page = await ctx.session.list({ parentID: parentID as never })
-        return page.data as unknown as readonly SessionLike[]
-      } catch {
-        return []
+    const listSessions = async (options: RecoveryListInput): Promise<{ data: readonly RecoverSession[]; cursor?: { next?: string } }> => {
+      const sessions: RecoverSession[] = []
+      const seenCursors = new Set<string>()
+      let cursor = options.cursor
+      while (true) {
+        const page = await ctx.session.list({
+          ...(options.parentID ? { parentID: options.parentID as never } : {}),
+          ...(options.search ? { search: options.search as never } : {}),
+          ...(cursor ? { cursor: cursor as never } : {}),
+        })
+        sessions.push(...(page.data as unknown as RecoverSession[]))
+        const next = page.cursor.next
+        if (!next) return { data: sessions }
+        const cursorValue = String(next)
+        if (seenCursors.has(cursorValue)) throw new Error(`session list repeated cursor${options.parentID ? ` for parent ${options.parentID}` : ""}`)
+        seenCursors.add(cursorValue)
+        cursor = cursorValue
       }
+    }
+
+    const listChildren = async (parentID: string): Promise<readonly SessionLike[]> => {
+      return (await listSessions({ parentID })).data
     }
 
     const handlers = createTreeTools({
@@ -42,22 +58,42 @@ export default Plugin.define({
       get,
       listChildren,
       prompt: (input) => ctx.session.prompt(input as never),
+      wait: (input) => ctx.session.wait(input as never),
+      context: async (input) => (await ctx.session.context(input as never)) as never,
+      switchModel: typeof ctx.session.switchModel === "function"
+        ? async (input) => ctx.session.switchModel({
+            sessionID: input.sessionID as never,
+            model: input.model as never,
+          })
+        : undefined,
+      listSessions,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      now: Date.now,
     })
 
+    const missingRecoveryAPIs = [
+      ...(typeof ctx.session.wait === "function" ? [] : ["ctx.session.wait"]),
+      ...(typeof ctx.session.context === "function" ? [] : ["ctx.session.context"]),
+    ]
+    const registeredHandlers = Object.values(handlers).filter((tool) => tool.name !== "recover" || missingRecoveryAPIs.length === 0)
     await ctx.tool.transform((editor) => {
       editor.namespace(TREE_NAMESPACE)
-      for (const tool of Object.values(handlers)) {
+      // Keep the recovery tool off older/test contexts that do not expose the
+      // V2 wait/context APIs it requires. The production V2 context has both.
+      for (const tool of registeredHandlers) {
         editor.add({
           name: tool.name,
           description: tool.description,
           input: tool.input,
+          output: { type: "object", additionalProperties: true },
           options: { namespace: TREE_NAMESPACE.name },
           execute: async (input, context) => {
-            const result = await tool.execute(input as Record<string, unknown>, context)
-            // This plugin intentionally has no output schema. Return only the
-            // documented text content even if a handler grows extra internal
-            // fields later; otherwise OpenCode rejects `output` without schema.
-            return { content: result.content, ...(result.metadata ? { metadata: result.metadata } : {}) }
+            const result = await tool.execute(input as Record<string, unknown>, context as never)
+            return {
+              content: result.content,
+              output: result.output,
+              ...(result.metadata ? { metadata: result.metadata } : {}),
+            }
           },
         })
       }
@@ -88,8 +124,9 @@ export default Plugin.define({
       )
     })
 
-    // Provider failures get written into the failing session's journal, so
-    // "why did this node die" has an answer that outlives the session.
+    // The V2 retry-policy hook runs after provider-failure classification and
+    // can receive a terminal (retry:false) decision too. This is not a general
+    // session-failure event: failures outside this policy hook are not captured.
     await ctx.session.hook("retry", async (event) => {
       const error = event.error as { type?: string; message?: string; status?: number } | undefined
       await appendEntry(ctx.storage, event.sessionID as unknown as string, {
@@ -103,7 +140,9 @@ export default Plugin.define({
       })
     })
 
-    log(`loaded (OpenCode ${ctx.app.version}) — tools: tree.whoami, tree.family, tree.journal, tree.handoff, tree.wake`)
+    const registeredNames = registeredHandlers.map((tool) => `tree.${tool.name}`).join(", ")
+    const omission = missingRecoveryAPIs.length ? `; tree.recover omitted (missing ${missingRecoveryAPIs.join(", ")})` : ""
+    log(`loaded (OpenCode ${ctx.app.version}) — tools: ${registeredNames}${omission}`)
   },
 })
 

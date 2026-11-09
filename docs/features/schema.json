@@ -1,0 +1,527 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema.json",
+  "title": "Feature-first feature catalog",
+  "description": "A whole-file array of feature records. Each record preserves user intent and links it to validation, proof, routines, and how-to documentation.",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/featureRecord"
+  },
+  "$defs": {
+    "featureRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "status",
+        "lifecycle",
+        "story",
+        "jobStory",
+        "validation",
+        "criteria",
+        "routine",
+        "skillDoc",
+        "provenance",
+        "ambiguities",
+        "notes",
+        "links"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^F-[0-9]{2,}$",
+          "description": "Stable feature identifier. Do not recycle an ID when a feature is renamed or deprecated."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short, user-understandable capability name."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "implemented",
+            "partial",
+            "not-implemented"
+          ],
+          "description": "Current delivery state, independent of lifecycle maturity. Use partial when only some behavior or supporting research exists."
+        },
+        "lifecycle": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "accepted",
+            "implemented",
+            "verified",
+            "deprecated"
+          ],
+          "description": "Product lifecycle state. Verified requires observable proof; accepted means the intent is recorded, not that delivery is complete."
+        },
+        "story": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Cockburn User-Goal altitude, phrased as an 'I can…' user outcome. Keep implementation nouns out of the story; implementation belongs in linked routines or notes."
+        },
+        "jobStory": {
+          "description": "Optional Jobs-to-be-Done framing: 'When [situation], I want [motivation], so I can [outcome]'. Null means the situation/motivation framing is not yet known.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^When .+, I want .+, so I can .+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "algorithm": {
+          "type": "array",
+          "description": "Optional ordered user-specified/inferred behavior model, used where one feature describes a multi-step workflow. It is not a technical plan.",
+          "items": {
+            "$ref": "#/$defs/algorithmStep"
+          }
+        },
+        "validation": {
+          "type": "object",
+          "description": "Executable-style acceptance scenarios plus explicit evidence that would invalidate the feature claim.",
+          "additionalProperties": false,
+          "required": [
+            "scenarios",
+            "invalidation"
+          ],
+          "properties": {
+            "scenarios": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Gherkin-inspired Given/When/Then scenarios describing observable user outcomes, not implementation steps.",
+              "items": {
+                "$ref": "#/$defs/scenario"
+              }
+            },
+            "invalidation": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Concrete counter-evidence that shows the capability is absent, broken, or incomplete. Avoid vague checks such as 'does not work'.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "criteria": {
+          "type": "object",
+          "description": "Feature-level observable proof criteria. These resemble review-dash ProofCriteria but are not engine-native records.",
+          "additionalProperties": false,
+          "required": [
+            "items",
+            "linkage",
+            "engineRef"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/proofCriterion"
+              }
+            },
+            "linkage": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Must explain that the review-dash engine is keyed by Notion task-page ID; feature criteria must be referenced by a criteria-file path or task ID and cannot be embedded as a feature-ID-native engine payload."
+            },
+            "engineRef": {
+              "type": "object",
+              "description": "Optional bridge to engine-native proof. Keep null until a real task page and criteria file exist.",
+              "additionalProperties": false,
+              "required": [
+                "taskId",
+                "criteriaPath"
+              ],
+              "properties": {
+                "taskId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Notion task page ID consumed by the engine, if assigned."
+                },
+                "criteriaPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Path to engine-native criteria JSON, if generated."
+                }
+              }
+            }
+          }
+        },
+        "routine": {
+          "type": "object",
+          "description": "Pointer to an inventory-grade ordered routine contract, or an explicit null reference with a reason. A routine describes trigger, inputs, and ordered actions; it is not an implementation plan.",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "ref",
+            "reason",
+            "trigger",
+            "inputs",
+            "steps"
+          ],
+          "properties": {
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Stable routine ID, such as RT-F-01, or null when no routine is defined."
+            },
+            "ref": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Path/anchor to the routine contract, or null."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Why the routine reference is null, or what the linked routine covers."
+            },
+            "trigger": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Manual, scheduled, or event trigger; null when not established."
+            },
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "User-visible inputs consumed by the routine."
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/routineStep"
+              },
+              "description": "Ordered, inventory-grade actions. Empty when no routine contract exists."
+            }
+          }
+        },
+        "skillDoc": {
+          "type": "object",
+          "description": "Pointer to the how-to-use documentation for the capability, including planned documentation when it has not been written.",
+          "additionalProperties": false,
+          "required": [
+            "ref",
+            "status",
+            "reason"
+          ],
+          "properties": {
+            "ref": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Documentation path/anchor, or null if no location has been chosen."
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "present",
+                "planned",
+                "none"
+              ],
+              "description": "Whether the how-to documentation exists, is planned, or has no known home."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Context for a planned or absent document, or what the present document teaches."
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Required provenance preserving the user's exact words and source message. Never paraphrase quote; use spec-derived only where the inventory explicitly says the wording is synthesized from a specification.",
+          "additionalProperties": false,
+          "required": [
+            "messageId",
+            "quote",
+            "confidence"
+          ],
+          "properties": {
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Source message identifier as recorded in the feature inventory."
+            },
+            "quote": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Verbatim source quote. When the inventory supplies multiple fragments, retain each fragment exactly and separate them without rewriting."
+            },
+            "confidence": {
+              "type": "string",
+              "enum": [
+                "direct-user-quote",
+                "user-correction",
+                "spec-derived"
+              ],
+              "description": "Whether this is a direct quote, a user correction, or a spec-derived formulation. Spec-derived records should carry the provenance caveat in notes."
+            }
+          }
+        },
+        "ambiguities": {
+          "type": "array",
+          "description": "Open questions not settled by the user. Keep uncertainty visible rather than silently selecting a behavior.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "notes": {
+          "type": "array",
+          "description": "Scope, implementation-state evidence, decisions, or provenance caveats that do not belong in the user story.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "links": {
+          "type": "object",
+          "description": "Stable cross-catalog links for feature → extracted user story → routine → proof items → how-to document.",
+          "additionalProperties": false,
+          "required": [
+            "storyId",
+            "routineId",
+            "proofIds",
+            "skillDocRef"
+          ],
+          "properties": {
+            "storyId": {
+              "type": "string",
+              "pattern": "^US-[0-9]{3,}$",
+              "description": "Stable ID used when projecting this feature into app-skills-extraction user-stories.json."
+            },
+            "routineId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Stable routine catalog ID, or null until a routine is defined."
+            },
+            "proofIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Stable IDs of the feature-level criteria items."
+            },
+            "skillDocRef": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Same canonical how-to documentation pointer as skillDoc.ref."
+            }
+          }
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "given",
+        "when",
+        "then"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable scenario identifier scoped to the feature."
+        },
+        "name": {
+          "type": "string",
+          "description": "Short scenario label."
+        },
+        "given": {
+          "type": "string",
+          "description": "Relevant starting context (Given)."
+        },
+        "when": {
+          "type": "string",
+          "description": "User action or event (When)."
+        },
+        "then": {
+          "type": "string",
+          "description": "Observable expected user outcome (Then)."
+        }
+      }
+    },
+    "proofCriterion": {
+      "type": "object",
+      "description": "A stable, feature-level proof item shaped like (but not embedded as) review-dash screenshot criteria.",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "slug",
+        "description",
+        "method",
+        "expected_values",
+        "evidence",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable proof identifier, such as PC-F-01-01."
+        },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "Compact stable slug corresponding to engine ScreenshotCriteria.slug when adapted."
+        },
+        "description": {
+          "type": "string",
+          "description": "What observable result this proof checks."
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "automated",
+            "visual",
+            "mixed"
+          ],
+          "description": "How the proof is gathered."
+        },
+        "expected_values": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Named expected observations compatible in spirit with the engine's expected_values map.",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "evidence": {
+          "type": "string",
+          "description": "Expected evidence artifact or observable source; use a concrete path, screenshot, event, or user-visible state where known."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "not-run",
+            "pass",
+            "fail",
+            "blocked"
+          ],
+          "description": "Current proof state. Do not mark pass without evidence."
+        }
+      }
+    },
+    "routineStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order",
+        "action",
+        "target",
+        "description"
+      ],
+      "properties": {
+        "order": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "One-based order in the routine."
+        },
+        "action": {
+          "type": "string",
+          "description": "Verb describing the user-facing or agent-facing action."
+        },
+        "target": {
+          "type": "string",
+          "description": "The session, agent, result, or other object acted on."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the step accomplishes and what completion looks like."
+        }
+      }
+    },
+    "algorithmStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order",
+        "text",
+        "basis"
+      ],
+      "properties": {
+        "order": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "One-based order in the user-facing behavior model."
+        },
+        "text": {
+          "type": "string",
+          "description": "Concise behavior statement; keep unresolved implementation mechanics out of specified behavior."
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "specified",
+            "inferred"
+          ],
+          "description": "Whether the behavior was explicitly specified by the user or is an inference requiring confirmation."
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Verbatim source evidence for a specified algorithm step.",
+          "additionalProperties": false,
+          "required": [
+            "messageId",
+            "quote"
+          ],
+          "properties": {
+            "messageId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact source message identifier."
+            },
+            "quote": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Verbatim source text supporting this step."
+            }
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "basis": {
+            "const": "specified"
+          }
+        },
+        "required": [
+          "basis"
+        ]
+      },
+      "then": {
+        "required": [
+          "provenance"
+        ]
+      }
+    }
+  }
+}
