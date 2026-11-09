@@ -70,6 +70,8 @@ export interface RecoverInput {
   leafTimeoutMs?: number
   maxDurationMs?: number
   pinModel?: string
+  /** Session IDs left untouched (superseded batches): never prompted, never model-switched. */
+  excludeSessionIds?: string[]
   progress?: (update: unknown) => void | Promise<void>
   signal?: AbortSignal
 }
@@ -90,7 +92,7 @@ export interface RecoveryAction {
   runId: string
   sessionID: string
   role: RecoveryRole
-  action: "resumed" | "already-complete" | "pending" | "blocked-credits" | "blocked-auth" | "blocked-network" | "blocked-timeout" | "blocked-unknown-error" | "blocked-barrier" | "skipped-unknown"
+  action: "resumed" | "already-complete" | "pending" | "blocked-credits" | "blocked-auth" | "blocked-network" | "blocked-timeout" | "blocked-unknown-error" | "blocked-barrier" | "skipped-unknown" | "skipped-superseded"
   failureClass?: FailureClass
   retries?: number
   diagnostic?: string
@@ -128,7 +130,7 @@ export interface RecoveryReport {
   stoppedBy?: string
   resumable?: boolean
   note?: string
-  stats: { resumed: number; alreadyComplete: number; blocked: number; pending: number }
+  stats: { resumed: number; alreadyComplete: number; blocked: number; pending: number; skippedSuperseded: number }
   durationMs: number
 }
 
@@ -276,13 +278,13 @@ function successfulAfterLastError(messages: readonly RecoveryMessage[]): boolean
   return assistants.slice(lastError + 1).some(successfulAssistant)
 }
 
-function latestAssistantText(messages: readonly RecoveryMessage[]): string {
+function latestAssistantText(messages: readonly RecoveryMessage[], fallback = "Recovered work; no assistant summary was available."): string {
   const assistants = assistantMessages(messages)
   for (let i = assistants.length - 1; i >= 0; i -= 1) {
     const text = textOf(assistants[i]!).trim()
     if (text) return text.slice(0, 1_000)
   }
-  return "Recovered work; no assistant summary was available."
+  return fallback
 }
 
 function messagesAfterAdmission(messages: readonly RecoveryMessage[], admission: unknown): RecoveryMessage[] {
@@ -384,6 +386,7 @@ function makeStats(actions: readonly RecoveryAction[]) {
     alreadyComplete: actions.filter((action) => action.action === "already-complete").length,
     blocked: actions.filter((action) => action.action.startsWith("blocked-") || action.action === "skipped-unknown").length,
     pending: actions.filter((action) => action.action === "pending").length,
+    skippedSuperseded: actions.filter((action) => action.action === "skipped-superseded").length,
   }
 }
 
@@ -655,6 +658,10 @@ export async function recoverSessions(input: RecoverInput, deps: RecoverDeps): P
 
   const state = new Map<string, "succeeded" | "already-complete" | "recovered" | "pending" | "blocked">()
   const summaries = new Map<string, string>()
+  // Superseded-batch exclusions: these sessions are left completely untouched —
+  // no prompt and no model pin — but count as already-complete so an old attempt
+  // can never deadlock the parent that outlived it.
+  const excludedSessionIds = new Set((input.excludeSessionIds ?? []).map((id) => id.trim()).filter(Boolean))
   let rootReactivated = false
   const pinnedSessions = new Set<string>()
 
@@ -858,6 +865,20 @@ export async function recoverSessions(input: RecoverInput, deps: RecoverDeps): P
       } else {
         state.set(id, "already-complete")
       }
+      continue
+    }
+    if (
+      excludedSessionIds.has(id) &&
+      (node.classification === "failed" || node.classification === "interrupted" || node.classification === "unknown")
+    ) {
+      // Superseded batch: skipped, never prompted, never model-pinned, and
+      // barrier-satisfying so the parent resumes around it. Excluded running
+      // nodes fall through to the pending branch below (conservative: a live
+      // session is not silently marked complete).
+      addAction(node, "skipped-superseded", {
+        summary: latestAssistantText(node.context, "excluded from recovery — superseded batch, left untouched"),
+      })
+      state.set(id, "already-complete")
       continue
     }
     if (node.classification === "running") {

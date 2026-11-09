@@ -126,3 +126,59 @@ test("tree_wake forwards text and resume to ctx.session.prompt", async () => {
   assert.equal(calls[0]!.resume, true)
   assert.equal((JSON.parse(woken.content) as Record<string, unknown>).sessionID, "ses_sleeper")
 })
+
+test("tree_recover declares excludeSessionIds and passes a cleaned exclusion list through to recovery", async () => {
+  const ctx = makeFakeCtx()
+  const sessions = new Map<string, Record<string, unknown>>([
+    ["ses_root", { id: "ses_root", title: "root", outcome: "failed" }],
+    ["ses_stale", { id: "ses_stale", parentID: "ses_root", title: "stale", outcome: "failed" }],
+    ["ses_fresh", { id: "ses_fresh", parentID: "ses_root", title: "fresh", outcome: "failed" }],
+  ])
+  const messages = new Map<string, Array<Record<string, unknown>>>([...sessions.keys()].map((id) => [id, []]))
+  const prompted: string[] = []
+  let admission = 0
+
+  const tools = createTreeTools({
+    storage: ctx.storage,
+    get: async (id) => sessions.get(id) as never,
+    listChildren: async (parentID) => [...sessions.values()].filter((session) => session.parentID === parentID) as never,
+    listSessions: async (input) => ({
+      data: (input.parentID
+        ? [...sessions.values()].filter((session) => session.parentID === input.parentID)
+        : [...sessions.values()]) as never,
+    }),
+    prompt: async (input) => {
+      prompted.push(input.sessionID)
+      const id = `adm-${++admission}`
+      messages.get(input.sessionID)!.push({ id, role: "user", parts: [{ type: "text", text: input.text }] })
+      return { id, sessionID: input.sessionID }
+    },
+    wait: async ({ sessionID }) => {
+      const inbox = messages.get(sessionID)!
+      const lastUser = [...inbox].reverse().find((message) => message.role === "user")
+      if (lastUser) inbox.push({ id: `ans-${inbox.length}`, role: "assistant", finish: "stop", parts: [{ type: "text", text: `done in ${sessionID}` }] })
+    },
+    context: async ({ sessionID }) => messages.get(sessionID) ?? [],
+    sleep: async () => {},
+    now: Date.now,
+  })
+
+  const schema = tools.recover.input.properties as Record<string, { type?: string; items?: { type?: string } }>
+  assert.equal(schema.excludeSessionIds?.type, "array")
+  assert.equal(schema.excludeSessionIds?.items?.type, "string")
+
+  const result = await tools.recover.execute(
+    { rootId: "ses_root", excludeSessionIds: ["ses_stale", " ", "ses_stale", 42] },
+    caller,
+  )
+  const output = result.output as {
+    actions: Array<{ sessionID: string; action: string }>
+    stats: { skippedSuperseded: number }
+    rootReactivated: boolean
+  }
+  // Empty strings, duplicates, and non-strings are dropped before recovery.
+  assert.deepEqual(prompted.filter((sessionID) => sessionID === "ses_stale"), [])
+  assert.equal(output.actions.find((action) => action.sessionID === "ses_stale")?.action, "skipped-superseded")
+  assert.equal(output.stats.skippedSuperseded, 1)
+  assert.equal(output.rootReactivated, true)
+})

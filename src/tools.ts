@@ -57,6 +57,16 @@ const ok = (body: Record<string, unknown>): TreeToolResult => {
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length ? value : undefined
 
+/** Trim, drop empties, and dedupe a string-array input; undefined when nothing usable remains. */
+const asStringArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const items = [...new Set(value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean))]
+  return items.length ? items : undefined
+}
+
 export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
   const whoami: TreeTool = {
     name: "whoami",
@@ -260,6 +270,11 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
         leafTimeoutMs: { type: "integer", minimum: 1, description: "Maximum wait per resumed session. Default 900000." },
         maxDurationMs: { type: "integer", minimum: 1, description: "Maximum total run duration. Default 3600000." },
         pinModel: { type: "string", description: "Optionally pin resumed sessions to providerID/modelID. Omit to preserve each session's current model." },
+        excludeSessionIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Session IDs to leave untouched (superseded batches). Excluded failed/interrupted/unknown sessions receive no prompt and no model switch and count as already-complete for sibling barriers. Omit to recover the whole tree.",
+        },
       },
       additionalProperties: false,
     },
@@ -268,6 +283,7 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
         throw new Error("tree.recover requires listSessions, wait, and context dependencies")
       }
       const rootId = asString(input.rootId)
+      const excludeSessionIds = asStringArray(input.excludeSessionIds)
       const report = await recoverSessions(
         {
           ...(rootId ? { rootId } : {}),
@@ -276,6 +292,7 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
           ...(typeof input.leafTimeoutMs === "number" ? { leafTimeoutMs: input.leafTimeoutMs } : {}),
           ...(typeof input.maxDurationMs === "number" ? { maxDurationMs: input.maxDurationMs } : {}),
           ...(asString(input.pinModel) ? { pinModel: asString(input.pinModel) } : {}),
+          ...(excludeSessionIds ? { excludeSessionIds } : {}),
           ...(context.signal ? { signal: context.signal } : {}),
           ...(context.progress ? { progress: context.progress } : {}),
         },

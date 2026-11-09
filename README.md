@@ -79,7 +79,12 @@ tree.recover({ rootId: "ses_...", dryRun: true })
 
 // Optionally pin resumed sessions to providerID/modelID; otherwise each current model is preserved.
 tree.recover({ rootId: "ses_...", pinModel: "provider/model" })
+
+// Leave superseded sub-agent attempts dead while the rest of the tree recovers.
+tree.recover({ rootId: "ses_...", excludeSessionIds: ["ses_..."] })
 ```
+
+`excludeSessionIds` targets only the latest batch inside an orchestrator: excluded sessions classified failed/interrupted/unknown receive zero prompts and no model switch (they never reach `pinModel`), are reported with a `skipped-superseded` action (also counted in `stats.skippedSuperseded`), and count as already-complete so they can never deadlock their parent's sibling barrier. Excluded succeeded sessions already fall through the already-complete path unchanged, and excluded running sessions stay `pending` — a live session is never silently marked complete. IDs are trimmed, empties dropped, and duplicates ignored.
 
 ### Optional: NRR marker discovery
 

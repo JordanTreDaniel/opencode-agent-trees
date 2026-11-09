@@ -282,6 +282,79 @@ test("explicit pinModel switches each resumed session while default recovery lea
   assert.deepEqual(defaultSwitches, [])
 })
 
+test("excluded failed child is skipped-superseded with zero prompts while the parent resumes after its other children", async () => {
+  const h = harness({
+    sessions: {
+      root: { title: "root", outcome: "failed" },
+      stale: { title: "stale", parentID: "root", outcome: "failed" },
+      fresh: { title: "fresh", parentID: "root", outcome: "failed" },
+    },
+  })
+
+  const report = await recoverSessions({ rootId: "root", excludeSessionIds: ["stale"] }, h.deps)
+
+  // The excluded session is untouched: no prompt ever reaches it.
+  assert.deepEqual(h.calls.filter((call) => call.sessionID === "stale"), [])
+  assert.deepEqual(h.messages.get("stale"), [])
+
+  const staleAction = report.actions.find((action) => action.sessionID === "stale")
+  assert.equal(staleAction?.action, "skipped-superseded")
+  assert.equal(report.stats.skippedSuperseded, 1)
+
+  // Barrier-satisfying: the parent resumes once its non-excluded child resolves.
+  assert.deepEqual(report.barriers, [])
+  assert.equal(report.actions.find((action) => action.sessionID === "root")?.action, "resumed")
+  assert.equal(report.rootReactivated, true)
+  assert.equal(report.resumable, undefined)
+  assert.deepEqual(report.handoffs.map((handoff) => handoff.childID), ["fresh"])
+  assert.ok(h.calls.findLastIndex((call) => call.sessionID === "fresh") < h.calls.findIndex((call) => call.sessionID === "root" && call.resume === true))
+})
+
+test("pinModel switches every resumed session but never an excluded one", async () => {
+  const switched: string[] = []
+  const h = harness({
+    sessions: {
+      root: { title: "root", outcome: "failed" },
+      stale: { title: "stale", parentID: "root", outcome: "failed" },
+      fresh: { title: "fresh", parentID: "root", outcome: "failed" },
+    },
+    switchModel: ({ sessionID, model }) => { switched.push(`${sessionID}:${model.providerID}/${model.id}`) },
+  })
+
+  const report = await recoverSessions({ rootId: "root", pinModel: "chosen/model", excludeSessionIds: ["stale"] }, h.deps)
+
+  assert.deepEqual(switched, ["fresh:chosen/model", "root:chosen/model"])
+  assert.equal(switched.some((entry) => entry.startsWith("stale:")), false)
+  assert.equal(report.actions.find((action) => action.sessionID === "stale")?.action, "skipped-superseded")
+  assert.equal(report.stats.skippedSuperseded, 1)
+})
+
+test("excluded unknown-classified node is skipped-superseded instead of blocking its parent's barrier", async () => {
+  const h = harness({
+    sessions: {
+      root: { title: "root", outcome: "failed" },
+      mystery: { title: "mystery", parentID: "root" },
+    },
+  })
+
+  const report = await recoverSessions({ rootId: "root", excludeSessionIds: ["mystery"] }, h.deps)
+
+  const mysteryAction = report.actions.find((action) => action.sessionID === "mystery")
+  assert.equal(mysteryAction?.action, "skipped-superseded")
+  assert.notEqual(mysteryAction?.action, "skipped-unknown")
+  assert.deepEqual(h.calls.filter((call) => call.sessionID === "mystery"), [])
+  assert.deepEqual(report.barriers, [])
+  assert.equal(report.actions.find((action) => action.sessionID === "root")?.action, "resumed")
+  assert.equal(report.rootReactivated, true)
+})
+
+test("a run without exclusions reports zero skippedSuperseded and is otherwise unchanged", async () => {
+  const h = harness(threeLevel())
+  const report = await recoverSessions({ rootId: "root" }, h.deps)
+  assert.deepEqual(report.stats, { resumed: 3, alreadyComplete: 0, blocked: 0, pending: 0, skippedSuperseded: 0 })
+  assert.equal(report.actions.some((action) => action.action === "skipped-superseded"), false)
+})
+
 test("network failure retries the identical prompt at the specified backoffs", async () => {
   const h = harness({
     sessions: {

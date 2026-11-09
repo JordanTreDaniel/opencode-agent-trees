@@ -874,7 +874,7 @@
     "id": "F-10",
     "title": "Consistent model across an agent tree",
     "status": "partial",
-    "lifecycle": "accepted",
+    "lifecycle": "verified",
     "story": "I can keep everyone working on a task aligned with my intended model.",
     "jobStory": null,
     "validation": {
@@ -901,8 +901,8 @@
           "expected_values": {
             "tree_model_consistent": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "live proof 2026-11-02: model-switched rows (luna→mimo) precede every prompt for ses_e642fdf69/ses_e642224a/ses_e64232e4 (rig DB); switch-before-prompt also asserted structurally at recover.ts pinNodeModel call sites",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -2447,6 +2447,91 @@
         "PC-F-30-01"
       ],
       "skillDocRef": "README.md#optional-nrr-marker-discovery"
+    }
+  },
+  {
+    "id": "F-31",
+    "title": "Targeted recovery — exclude superseded batches",
+    "status": "implemented",
+    "lifecycle": "accepted",
+    "story": "I can recover only the latest batch of work inside an orchestrator, leaving superseded sub-agent attempts dead.",
+    "jobStory": "When an orchestrator kept re-dispatching failed sub-agents, I want to restart only its latest batch, so I can keep superseded attempts from duplicating work.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-31-V1",
+          "name": "Excluded failed node left untouched while siblings resolve",
+          "given": "A tree with a failed node excluded from recovery.",
+          "when": "Recovery runs.",
+          "then": "The excluded node receives zero prompts (its model and messages unchanged), it does not block its parent's barrier, and the parent resumes after the non-excluded children resolve."
+        },
+        {
+          "id": "F-31-V2",
+          "name": "Excluded sessions are never model-switched",
+          "given": "pinModel is supplied together with an exclusion list.",
+          "when": "Recovery runs.",
+          "then": "Excluded sessions are never model-switched while resumed ones are."
+        }
+      ],
+      "invalidation": [
+        "An excluded session receives any prompt or model switch.",
+        "An excluded failed child deadlocks its parent's barrier."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-31-01",
+          "slug": "f-31-excluded-session-left-untouched",
+          "description": "An excluded session receives zero prompts and no model switch, and it never blocks its parent's barrier.",
+          "method": "manual",
+          "expected_values": {
+            "excluded_session_left_untouched": "true"
+          },
+          "evidence": "Live run 2026-11-09 (attempt 1): tree.recover with excludeSessionIds=[\"ses_e41067cc9ffec9saeWccSSRz7W\"] + pinModel on root ses_e4899da77ffePz9Nv16xGqJ0HB. Primary evidence: docs/proof/f31-exclusion/ (result.json + run.log + README.md) shows action skipped-superseded for the excluded session (stats.skippedSuperseded=1), barriers=[], rootReactivated=true, zero blocked/pending, 3 handoffs each delivered && parentResumed, and exactly 4 of 124 sessions under the root touched after run start. Rig DB confirms the excluded session got zero new messages and zero model-switched rows (last message 2026-11-09T06:23:16.622Z, model still openai/gpt-6-luna, outcome failed) while all 4 resumed sessions were model-switched luna→mimo before their first prompt (switch→prompt: 1794221835277→1794221835324, 1794221855292→1794221855330, 1794221905756→1794221905792, 1794221932359→1794221932400). Secondary copies: /tmp/orchestrator-state/demo-recover/e4899da77-recover-result.json and ~/dev/opencode-v2-test/tmp/opencode/e4899da77-recover.log.",
+          "status": "pass"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No user-facing ordered routine has been specified for this feature yet.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "README.md#recursive-recovery",
+      "status": "present",
+      "reason": "The README documents excludeSessionIds next to pinModel under Recursive recovery."
+    },
+    "provenance": {
+      "messageId": "current-session:2026-11-09-orchestrator",
+      "quote": "we don't want to restart all of them because on a lot of these the orchestrator actually kept attempting to restart sub agents. So we would not want to restart every sub-agent. Inside of that orchestrator, only from the latest batch.",
+      "confidence": "direct-user-quote"
+    },
+    "ambiguities": [
+      "How should an excluded node with live (running) children be treated?",
+      "Should exclusion apply to running nodes or only failed/interrupted/unknown?"
+    ],
+    "notes": [
+      "Exclusion applies to nodes classified failed, interrupted, or unknown: they are recorded as skipped-superseded and count as already-complete for barrier purposes. Excluded succeeded nodes already fall through the already-complete branch; excluded running nodes stay pending (conservative — they are not silently marked complete).",
+      "An excluded node is barrier-satisfying even when its own children remain unresolved, so a superseded batch cannot deadlock the parent that outlived it.",
+      "Verified live 2026-11-09 (attempt 1) on root ses_e4899da77ffePz9Nv16xGqJ0HB excluding ses_e41067cc9ffec9saeWccSSRz7W: skipped-superseded recorded, excluded session untouched in the rig DB, 4 sessions resumed under pinModel, rootReactivated. Evidence: /tmp/orchestrator-state/demo-recover/e4899da77-recover-result.json and ~/dev/opencode-v2-test/tmp/opencode/e4899da77-recover.log."
+    ],
+    "links": {
+      "storyId": "US-031",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-31-01"
+      ],
+      "skillDocRef": "README.md#recursive-recovery"
     }
   }
 ]
