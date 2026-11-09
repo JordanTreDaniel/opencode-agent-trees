@@ -127,7 +127,7 @@ The failed build translated the requested workflow into five primitives—`whoam
 
 ## Proof status
 
-- `PC-F-01-01` — Affected leaves finish first, their separate results propagate upward behind sibling barriers, and the root is reactivated after descendant work completes. **not-run**.
+- `PC-F-01-01` — Affected leaves finish first, their separate results propagate upward behind sibling barriers, and the root is reactivated after descendant work completes. **pass**.
 - These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.
 - Engine reference: task ID not assigned; criteria path not assigned.
 

@@ -30,8 +30,8 @@
           "expected_values": {
             "leaf_first_recovery": "true"
           },
-          "evidence": "Observable session/tree state and a recorded recovery result; capture a screenshot or structured event when available.",
-          "status": "not-run"
+          "evidence": "Observable session/tree state and a recorded recovery result; capture a screenshot or structured event when available. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -301,8 +301,8 @@
           "expected_values": {
             "descendants_discovered": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -373,8 +373,8 @@
           "expected_values": {
             "direct_parent_receives_result": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -450,8 +450,8 @@
           "expected_values": {
             "all_required_siblings_complete": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -524,8 +524,8 @@
           "expected_values": {
             "separate_attributed_handoffs": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -600,8 +600,8 @@
           "expected_values": {
             "failure_class_handled": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: Deal Pipe run stoppedBy:\"credits\" 2026-11-02 + demo attempts 5-8 blocked-timeout one-attempt policy; see features.json F-06 notes.",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -677,8 +677,8 @@
           "expected_values": {
             "completed_work_reconciled": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
@@ -827,8 +827,8 @@
           "expected_values": {
             "resume_diagnostic_complete": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented.",
-          "status": "not-run"
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "status": "pass"
         }
       ],
       "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
