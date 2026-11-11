@@ -11,6 +11,7 @@ import { appendEntry } from "./lib/journal.ts"
 import { extractChildID } from "./lib/child-dispatch.ts"
 import type { SessionLike } from "./lib/family.ts"
 import type { RecoveryListInput, RecoverSession } from "./lib/recover.ts"
+import { DEFAULT_HOST, defaultDbPath, projectStatus } from "./lib/status.ts"
 import { createTreeTools, TREE_NAMESPACE } from "./tools.ts"
 
 const CHILD_TOOL = /(^|[._-])(subagent|task|spawn)([._-]|$)/i
@@ -67,6 +68,12 @@ export default Plugin.define({
           })
         : undefined,
       listSessions,
+      status: (input) =>
+        projectStatus({
+          ...input,
+          dbPath: input.dbPath ?? defaultDbPath(),
+          host: input.host ?? (process.env.OPENCHAMBER_HOST || DEFAULT_HOST),
+        }),
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: Date.now,
     })

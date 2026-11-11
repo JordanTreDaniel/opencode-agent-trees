@@ -2533,5 +2533,492 @@
       ],
       "skillDocRef": "README.md#recursive-recovery"
     }
+  },
+  {
+    "id": "F-32",
+    "title": "Durable pause record for pending forms",
+    "status": "not-implemented",
+    "lifecycle": "proposed",
+    "story": "I can tell that a session is paused on a question even after the process that was holding the form restarts.",
+    "jobStory": "When a process restarts while sessions wait on forms, I want a durable record of every outstanding pause, so I can resume those sessions instead of paying for a new turn each time.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-32-V1",
+          "name": "Pause survives a restart",
+          "given": "A session paused on a pending form, with its turn still suspended.",
+          "when": "The engine process restarts.",
+          "then": "The pause is still discoverable and replying to the form resumes the same turn with no new prompt and no second billing."
+        },
+        {
+          "id": "F-32-V2",
+          "name": "A lost pause is visible, not silent",
+          "given": "A form that could not be restored after a restart.",
+          "when": "The pause view is read.",
+          "then": "The session is reported as a lost pause with its last known form, rather than appearing idle."
+        }
+      ],
+      "invalidation": [
+        "A restart clears every pending form and nothing records that the pauses existed.",
+        "A session that was paused reads as idle after a restart, with no marker distinguishing it from a finished turn."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-32-01",
+          "slug": "f-32-pause-survives-restart",
+          "description": "A session paused on a pending form is still identified as paused after a process restart, and replying resumes the same turn.",
+          "method": "manual",
+          "expected_values": {
+            "pause_discoverable_after_restart": "true",
+            "new_turn_billed": "false"
+          },
+          "evidence": "Not gathered: this capability does not exist. Pending forms live only in engine RAM today, so there is no store to read after a restart.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No routine exists because the capability is not implemented; today the only pause read is a live host query.",
+      "trigger": null,
+      "inputs": [
+        "sessionID",
+        "pending[sid].forms[] from GET /api/sessions/status"
+      ],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": null,
+      "status": "none",
+      "reason": "No how-to exists for a capability that is not implemented. Current guidance is the pause contract in the agent-trees skill and README \u00a7 Views (question-paused)."
+    },
+    "provenance": {
+      "messageId": "current-session:2026-11-11-views-wave",
+      "quote": "A durable pause record: pending forms must survive a restart so a paused session is not silently lost.",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Where should the record live: a session_v2 column, a host-side file, or the plugin journal?",
+      "Should a lost pause appear as its own view, or as a marker on the existing question-paused view?"
+    ],
+    "notes": [
+      "Provenance caveat: this wording is synthesized from the 2026-11-11 views build brief for the opencode-agent-trees repository and is not represented as a direct user quote.",
+      "Observed 2026-11-11: a paused session reports busy AND holds the execution claim, and one form per session is normal. A form can also outlive its turn, so presence of a form alone is not proof of a pause.",
+      "Cost of the gap: a lost form costs a new paid turn, because replying to a form resumes the same turn while re-prompting starts another.",
+      "Recorded so no agent treats pause state as durable across a restart."
+    ],
+    "links": {
+      "storyId": "US-032",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-32-01"
+      ],
+      "skillDocRef": null
+    }
+  },
+  {
+    "id": "F-33",
+    "title": "Status and views projection",
+    "status": "implemented",
+    "lifecycle": "verified",
+    "story": "I can see which sessions are running, paused on a question, or restart candidates without opening each conversation.",
+    "jobStory": "When a wave of agents has stalled or finished, I want one projection over the whole session graph, so I can pick the next action from data instead of guessing.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-33-V1",
+          "name": "One projection answers the inventory question",
+          "given": "A session database with many trees plus a running host.",
+          "when": "The status view is requested.",
+          "then": "Every named view is returned with its member count, and each row carries root, depth, leaf, tree membership, status and pending-form fields."
+        },
+        {
+          "id": "F-33-V2",
+          "name": "A pause needs both halves",
+          "given": "One session running with a pending form, one running without a form, and one holding a form whose turn ended.",
+          "when": "The question-paused view is read.",
+          "then": "Only the running session with a pending form is listed; the running session without a form and the stale-form session are not."
+        },
+        {
+          "id": "F-33-V3",
+          "name": "Degradation is declared, not hidden",
+          "given": "A host that refuses connections.",
+          "when": "The status view is requested.",
+          "then": "The projection still returns database-derived rows, sets stale to true, warns that pending forms are unknown, and claims no pause."
+        }
+      ],
+      "invalidation": [
+        "The projection reports a paused session without a live running turn and a pending form behind it.",
+        "The projection reports a user-spawned or wave index value.",
+        "A host failure yields confident run state or an empty success instead of stale: true."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-33-01",
+          "slug": "f-33-live-projection-runs",
+          "description": "The CLI produces a real projection against the live database and host, with named-view counts and no stale flag.",
+          "method": "automated",
+          "expected_values": {
+            "source": "sqlite+host",
+            "stale": "false",
+            "views_returned": 6
+          },
+          "evidence": "Live run 2026-11-11: `node scripts/tree-status.mjs --view question-paused --limit 600` returned 16 rows from 600 scanned, source sqlite+host, stale false, against /Users/jordanc/dev/opencode-v2-test/xdg/data/opencode/opencode.db. `--view needs-restart --limit 800` returned 37 rows; `--all --view running` scanned 10,829 sessions and returned 36. `--host off` on the same database returned stale true.",
+          "status": "pass"
+        },
+        {
+          "id": "PC-F-33-02",
+          "slug": "f-33-degradation-and-unavailable",
+          "description": "Tests prove the stale degradation path and that unavailable fields are reported rather than guessed.",
+          "method": "automated",
+          "expected_values": {
+            "stale_on_host_failure": "true",
+            "userSpawned_absent": "true",
+            "waveIndex_absent": "true"
+          },
+          "evidence": "test/status.test.ts (11 tests): derived tree fields, self-inclusive subtree, question-paused needing both halves, the stale-form case, DB-only degradation, unavailable fields, capped-inventory ancestor resolution, needs-restart exclusions, the default proxy, orphaned claim visibility, and view-name resolution.",
+          "status": "pass"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": "RT-F-33",
+      "ref": "README.md#views",
+      "reason": "The routine is a read-only projection: choose a named view, read the rows, act on only what the row proves.",
+      "trigger": "Manual: any question of the form \"what is running / paused / restartable\".",
+      "inputs": [
+        "named view (default, running, needs-restart, question-paused, tree:<rootId>, subtree:<id>)",
+        "session database path",
+        "host URL"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "Select",
+          "target": "named view",
+          "description": "Pick the view whose filter set answers the question; read its definition in src/lib/views.json rather than improvising filters."
+        },
+        {
+          "order": 2,
+          "action": "Read",
+          "target": "projection",
+          "description": "Run the projection and check meta.stale first: when stale is true, status and pending forms are unknown and no pause may be claimed."
+        },
+        {
+          "order": 3,
+          "action": "Act",
+          "target": "matching rows",
+          "description": "Only act on evidence the row carries: a pause needs a running turn plus a pending form, and a restart candidate needs a recorded failed or interrupted outcome."
+        }
+      ]
+    },
+    "skillDoc": {
+      "ref": "README.md#views",
+      "status": "present",
+      "reason": "README \u00a7 Views lists the six views, the filter vocabulary and the known-unavailable fields."
+    },
+    "provenance": {
+      "messageId": "current-session:2026-11-11-views-wave",
+      "quote": "Build the session views layer: status projection, 6 named views, tree.status tool.",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Should the default inventory cap stay at 2000 rows, or should the projection page everything by default and rely on the view filter to shrink output?",
+      "Should status treat a host 'busy' session that is absent from /api/session/active as running or unknown?"
+    ],
+    "notes": [
+      "Provenance caveat: this wording is synthesized from the 2026-11-11 views build brief for the opencode-agent-trees repository and is not represented as a direct user quote.",
+      "The vocabulary and the six views are declared once in src/lib/views.json; the engine, the CLI and the docs read that file, so a view cannot drift from its documentation.",
+      "Inventory is session_v2 paged newest-first with a default cap of 2000 and --all to page everything; child counts and ancestor chains are read from the whole table, so depth and isLeaf stay correct even when the page is capped.",
+      "The live overlay merges /api/session/active (running ids) with /api/sessions/status (per-session status and pending[sid].forms). /api/form is directory-scoped and is deliberately not used for inventory.",
+      "userSpawned and waveIndex have no source and are reported under meta.unavailable with reasons; no session row carries either field.",
+      "Auth: the CLI reads the host runfile in-process, sends the password only to a loopback host, and never prints it or places it in argv."
+    ],
+    "links": {
+      "storyId": "US-033",
+      "routineId": "RT-F-33",
+      "proofIds": [
+        "PC-F-33-01",
+        "PC-F-33-02"
+      ],
+      "skillDocRef": "README.md#views"
+    }
+  },
+  {
+    "id": "F-34",
+    "title": "Latest-batch auto-rule promotion",
+    "status": "not-implemented",
+    "lifecycle": "proposed",
+    "story": "I can recover only the latest batch of an orchestrator's work without hand-listing the sessions that were superseded.",
+    "jobStory": "When an orchestrator kept retrying sub-agents, I want the latest-batch rule applied automatically, so I can recover one batch without maintaining an exclusion list by hand.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-34-V1",
+          "name": "Superseded attempts inferred, not listed",
+          "given": "An orchestrator with several failed attempts per child and one later success.",
+          "when": "Recovery runs without an explicit exclusion list.",
+          "then": "Only the latest batch is resumed, and the inferred exclusions are reported before any prompt is sent."
+        },
+        {
+          "id": "F-34-V2",
+          "name": "Ambiguity stops the run",
+          "given": "A tree where creation order and success order disagree about which batch is latest.",
+          "when": "Recovery runs without an explicit exclusion list.",
+          "then": "The run plans without prompting and returns the ambiguity instead of choosing a rule silently."
+        }
+      ],
+      "invalidation": [
+        "Recovery resumes a superseded attempt because no exclusion list was supplied.",
+        "An inferred exclusion list is applied without being shown to the operator first."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-34-01",
+          "slug": "f-34-inferred-latest-batch",
+          "description": "Recovery infers the latest batch and reports the inferred exclusions before prompting.",
+          "method": "manual",
+          "expected_values": {
+            "inferred_exclusions_reported": "true",
+            "superseded_resumed": "false"
+          },
+          "evidence": "Not gathered: the rule ships only as a manual excludeSessionIds argument (F-31).",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No routine exists; the shipped behaviour is the manual exclusion path documented for F-31.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": null,
+      "status": "none",
+      "reason": "No how-to exists for an unimplemented inference rule. The manual rule is documented under README \u00a7 Recursive recovery."
+    },
+    "provenance": {
+      "messageId": "current-session:2026-11-11-views-wave",
+      "quote": "Promote the latest-batch rule from a manual argument into an automatic rule.",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Is \"latest batch\" defined by creation timestamp, by the most recent succeeded sibling, or by an explicit dispatch grouping?",
+      "Should the inferred list be approved interactively, or only reported in a dry run?"
+    ],
+    "notes": [
+      "Provenance caveat: this wording is synthesized from the 2026-11-11 views build brief for the opencode-agent-trees repository and is not represented as a direct user quote.",
+      "Today the rule is manual: tree.recover({ excludeSessionIds }) is the only latest-batch tool (F-31). It excludes failed/interrupted/unknown sessions and counts them as complete for the sibling barrier.",
+      "Promotion would have to derive the batch instead of receiving it; no such derivation ships, so do not plan against it."
+    ],
+    "links": {
+      "storyId": "US-034",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-34-01"
+      ],
+      "skillDocRef": null
+    }
+  },
+  {
+    "id": "F-35",
+    "title": "Broadcast to leaves",
+    "status": "not-implemented",
+    "lifecycle": "proposed",
+    "story": "I can send one instruction to every leaf in a tree at once instead of waking them one at a time.",
+    "jobStory": "When every leaf in a tree needs the same instruction, I want one leaf-scoped broadcast, so I can reach every leaf without issuing N identical prompts one by one.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-35-V1",
+          "name": "One instruction reaches every leaf",
+          "given": "A tree with several leaves that all need the same instruction.",
+          "when": "A leaf-scoped broadcast is issued.",
+          "then": "Each leaf receives the instruction exactly once, non-leaf sessions receive nothing, and the report lists per-leaf delivery outcomes."
+        },
+        {
+          "id": "F-35-V2",
+          "name": "Partial failure is reported, not swallowed",
+          "given": "A broadcast where some leaves refuse or fail delivery.",
+          "when": "The broadcast completes.",
+          "then": "Delivered and failed leaves are reported separately, and no failure is reported as success."
+        }
+      ],
+      "invalidation": [
+        "A broadcast prompts a non-leaf session.",
+        "Some leaves are silently skipped while the run reports success."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-35-01",
+          "slug": "f-35-leaf-only-broadcast",
+          "description": "A broadcast reaches leaves only, exactly once each, with a per-leaf delivery report.",
+          "method": "manual",
+          "expected_values": {
+            "non_leaf_prompted": "false",
+            "per_leaf_report": "true"
+          },
+          "evidence": "Not gathered: no broadcast capability exists. tree.wake is per-session by design.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No routine exists; the capability is not implemented and must not be planned around.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": null,
+      "status": "none",
+      "reason": "No how-to exists. README \u00a7 Known limitations and the agent-trees skill list broadcast as not real."
+    },
+    "provenance": {
+      "messageId": "current-session:2026-11-11-views-wave",
+      "quote": "Broadcast, leaf-scoped: one instruction to every leaf.",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Should a broadcast steer a running leaf or queue behind its current turn?",
+      "Does a broadcast wait for every leaf (a barrier) or report delivery only?"
+    ],
+    "notes": [
+      "Provenance caveat: this wording is synthesized from the 2026-11-11 views build brief for the opencode-agent-trees repository and is not represented as a direct user quote.",
+      "Not real: broadcast to N is listed as plan-only in the agent-trees skill (Hard Rule 5). Do not design against it.",
+      "The pieces it would need do not exist: per-leaf delivery semantics, a completion barrier, and a partial-failure report.",
+      "The nearest shipped behaviour is repeated tree.wake calls, one session at a time."
+    ],
+    "links": {
+      "storyId": "US-035",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-35-01"
+      ],
+      "skillDocRef": null
+    }
+  },
+  {
+    "id": "F-36",
+    "title": "Orphaned child claims are never auto-resumed by core",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can tell which stalled children recovery will never bring back on its own, so I do not wait for a resume that core will not perform.",
+    "jobStory": "When a child was mid-turn when its process died, I want to know that nothing will resume it automatically, so I can prompt it deliberately instead of waiting.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-36-V1",
+          "name": "A child claim outlives its process",
+          "given": "A child session that held an execution claim when the process died.",
+          "when": "The process restarts.",
+          "then": "Core does not resume the child: boot recovery only lists claims whose parent_id is null, so the child stays suspended until something prompts it."
+        },
+        {
+          "id": "F-36-V2",
+          "name": "The gap is visible in the projection",
+          "given": "A child row that still carries its claim marker but has no live turn.",
+          "when": "The status projection is read.",
+          "then": "The row shows claimed true with status idle, so the orphan is identifiable without guessing."
+        }
+      ],
+      "invalidation": [
+        "Core resumes a non-root session's claim after a restart.",
+        "A suspended child with no live turn is reported running, hiding the fact that nothing will resume it."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-36-01",
+          "slug": "f-36-root-only-boot-recovery",
+          "description": "Core's boot recovery enumerates suspended sessions whose parent_id is null, so a child claim is never picked up automatically.",
+          "method": "manual",
+          "expected_values": {
+            "boot_recovery_filters_parent_null": "true",
+            "child_claim_auto_resumed": "false"
+          },
+          "evidence": "packages/core/src/session/store.ts:197-207 in the OpenCode source: SessionStore.listSuspended selects session ids where time_suspended is not null AND parent_id is null. SessionStore.claim (same file) is what sets time_suspended, so the marker and the root filter together define the orphan gap.",
+          "status": "pass"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "This record documents core behaviour. The deliberate replacement is tree.recover with tree.wake, routed from README \u00a7 Recursive recovery.",
+      "trigger": null,
+      "inputs": [
+        "root session id",
+        "status projection rows with claimed true and status idle"
+      ],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "README.md#recursive-recovery",
+      "status": "present",
+      "reason": "README \u00a7 Recursive recovery explains why recovery starts at any node and climbs to the true root, and why a parent is only resumed after its children settle."
+    },
+    "provenance": {
+      "messageId": "packages/core/src/session/store.ts:197-207",
+      "quote": "listSuspended: select sessionID from SessionTable where time_suspended is not null and parent_id is null",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Should the plugin offer a first-class \"orphaned claims\" view rather than requiring the claimed + idle filter pair?",
+      "Is a child claim with no live turn ever legitimately abandoned by design, rather than a crash artifact?"
+    ],
+    "notes": [
+      "Provenance caveat: derived from the cited core source, not a user quote.",
+      "Consequence: when a process dies with children mid-turn, those children are never re-claimed by core. tree.recover or tree.wake must prompt them explicitly.",
+      "This explains the shape of recursive recovery: recovery climbs to the true root and works leaf-first, because nothing above it will ever start the work."
+    ],
+    "links": {
+      "storyId": "US-036",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-36-01"
+      ],
+      "skillDocRef": "README.md#recursive-recovery"
+    }
   }
 ]

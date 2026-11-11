@@ -1,0 +1,149 @@
+{
+  "$comment": "Single declarative definition of the status projection's filter vocabulary and named views. Read by src/lib/status.ts and scripts/tree-status.mjs; neither hardcodes a view or a filter.",
+  "version": 1,
+  "sources": {
+    "inventory": "session_v2 in the OpenCode SQLite database, paged newest-first and capped (default 2000, --all to ignore).",
+    "live": "Host endpoints /api/session/active (running ids) and /api/sessions/status (per-session status + pending[sid].forms). The host is the only cross-project source of pending forms.",
+    "notARecord": "Optional fields are omitted when unset. An absent field means null, never \"unknown\"."
+  },
+  "sort": {
+    "default": { "field": "lastActivity", "direction": "desc" },
+    "tiebreak": { "field": "id", "direction": "asc" },
+    "fields": {
+      "lastActivity": "max(time_updated, time_idle) as epoch milliseconds; null when both are absent.",
+      "depth": "Distance from the tree root; a root is 0.",
+      "id": "Session id, used only as a stable tiebreak."
+    }
+  },
+  "filters": {
+    "isRoot": {
+      "type": "boolean",
+      "derived": "parentId === null",
+      "description": "True when the session has no parent row."
+    },
+    "hasParent": {
+      "type": "boolean",
+      "derived": "parentId !== null",
+      "description": "True when the session has a parent row."
+    },
+    "parentId": {
+      "type": "string",
+      "derived": "session_v2.parent_id",
+      "description": "Direct parent session id, when one exists."
+    },
+    "rootId": {
+      "type": "string",
+      "derived": "walk parent_id to the top of the chain",
+      "description": "Id of the tree root this session belongs to. Self for a root."
+    },
+    "depth": {
+      "type": "integer | { min?: integer, max?: integer }",
+      "derived": "number of parent hops to the root",
+      "description": "A number matches exactly; an object matches an inclusive range."
+    },
+    "inTree": {
+      "type": "boolean",
+      "derived": "hasParent || childCount > 0",
+      "description": "True when the session participates in a tree at all, rather than standing alone."
+    },
+    "isSubtreeOf": {
+      "type": "string",
+      "derived": "anchor === id || anchor is an ancestor of id",
+      "description": "Self-inclusive: a session belongs to its own subtree. Backs the subtree:<id> view."
+    },
+    "isLeaf": {
+      "type": "boolean",
+      "derived": "childCount === 0",
+      "description": "True when no session names this session as its parent, checked against the whole session table rather than only the capped page."
+    },
+    "status": {
+      "type": "\"running\" | \"idle\" | \"unknown\" | array of those",
+      "derived": "live running set, else host sessions[sid].status, else DB time_idle / idle_outcome",
+      "description": "Run state. running means a turn is in flight or the session holds the execution claim; a paused session still reports running. idle means the session has completed a turn. unknown means neither source carries evidence. archived is a separate filter and is not folded into status."
+    },
+    "hasPendingForm": {
+      "type": "boolean",
+      "derived": "pending[sid].forms is non-empty on the host",
+      "description": "True only when the host reports at least one pending form for the session. Requires the live source; DB-only projections report it as false and set meta.stale, because absence of evidence is not evidence of absence."
+    },
+    "archived": {
+      "type": "boolean",
+      "derived": "time_archived !== null",
+      "description": "Archive flag, independent of status."
+    },
+    "claimed": {
+      "type": "boolean",
+      "derived": "time_suspended !== null",
+      "description": "Holds an execution claim. SessionStore.claim sets time_suspended when a turn starts, so a paused session reports claimed even though its status is running. claimed true with status idle is a claim left behind by a turn that is no longer live — the orphan case that core never auto-resumes (see F-36)."
+    },
+    "project": {
+      "type": "string",
+      "derived": "session_v2.project_id",
+      "description": "Project id the session belongs to."
+    },
+    "lastActivity": {
+      "type": "epoch-ms | ISO-8601 | { after?: value, before?: value }",
+      "derived": "max(time_updated, time_idle)",
+      "description": "A single value is an inclusive lower bound; an object bounds the range with inclusive after and exclusive before."
+    },
+    "outcome": {
+      "type": "\"succeeded\" | \"failed\" | \"interrupted\" | \"none\" | array of those",
+      "derived": "session_v2.idle_outcome",
+      "description": "Terminal outcome recorded by the engine. Required by needs-restart, which must not invent a failure state for sessions that recorded none. \"none\" matches a null idle_outcome."
+    },
+    "fork": {
+      "type": "boolean",
+      "derived": "fork_session_id !== null",
+      "description": "True when the session was forked from another session. Required by the default view's documented proxy."
+    },
+    "scheduled": {
+      "type": "boolean",
+      "derived": "metadata.openchamber.kind === \"scheduled\"",
+      "description": "True only when the metadata explicitly marks the session scheduled. An absent metadata object is not scheduled; nothing is inferred from titles or timing. Required by the default view's documented proxy."
+    },
+    "userSpawned": {
+      "unavailable": true,
+      "type": "boolean",
+      "reason": "No source exists. session_v2 has no spawn-provenance column (checked all 36 columns), metadata is null for every row in the live database, and neither /api/session/active nor /api/sessions/status reports who created a session. Any boolean would be a guess, so the field is absent from every projected session and the projection reports it under meta.unavailable."
+    },
+    "waveIndex": {
+      "unavailable": true,
+      "type": "integer",
+      "reason": "No source exists. Wave or batch membership is not recorded on session_v2 or by the host; only parent links, creation order and depth are observable. depth answers \"how deep\", not \"which wave\", so the field is absent and reported under meta.unavailable."
+    }
+  },
+  "views": {
+    "default": {
+      "filters": { "isRoot": true, "fork": false, "scheduled": false },
+      "sort": { "field": "lastActivity", "direction": "desc" },
+      "isProxy": true,
+      "proxyNote": "Documented proxy: root ∧ ¬fork ∧ metadata.openchamber.kind ≠ 'scheduled'. Upstream exposes no user-spawned flag, so this triple is the closest available approximation of \"a conversation the user started\". A session with no metadata counts as not scheduled, which widens the view rather than hiding rows; a scheduled session that was never labelled is indistinguishable from a user one."
+    },
+    "running": {
+      "filters": { "status": "running" },
+      "sort": { "field": "lastActivity", "direction": "desc" }
+    },
+    "needs-restart": {
+      "filters": { "status": ["idle", "unknown"], "archived": false, "outcome": ["failed", "interrupted"] },
+      "sort": { "field": "lastActivity", "direction": "desc" },
+      "note": "Restart candidates are sessions that recorded a failed or interrupted outcome and are not currently running. A session with no recorded idle_outcome is never listed: absence of an outcome is not a failure. Stale-form and paused sessions are excluded by the status filter, not by guessing."
+    },
+    "question-paused": {
+      "filters": { "status": "running", "hasPendingForm": true },
+      "sort": { "field": "lastActivity", "direction": "desc" },
+      "note": "Both filters are required. A paused session reports running and holds the execution claim, so status alone cannot find it. A pending form whose turn has ended (form present, idle_outcome succeeded) does not qualify: it is a stale form, not a pause."
+    },
+    "tree": {
+      "filters": { "rootId": "$root" },
+      "sort": { "field": "lastActivity", "direction": "desc" },
+      "parameters": ["root"],
+      "note": "Every session in one tree, including the root itself. Selected with --root <id>."
+    },
+    "subtree": {
+      "filters": { "isSubtreeOf": "$subtree" },
+      "sort": { "field": "lastActivity", "direction": "desc" },
+      "parameters": ["subtree"],
+      "note": "One session and everything beneath it. Selected with --subtree <id>."
+    }
+  }
+}

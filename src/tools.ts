@@ -8,6 +8,7 @@ import { appendEntry, readJournal, type StorageLike } from "./lib/journal.ts"
 import { buildFamily, describeSelf, loadAncestors, modelLabel, type SessionLike } from "./lib/family.ts"
 import { formatHandoff, outcomeWord } from "./lib/handoff.ts"
 import { recoverSessions, type RecoverSession, type RecoveryListInput, type RecoveryPrompt } from "./lib/recover.ts"
+import type { ProjectStatusInput, StatusProjection } from "./lib/status.ts"
 
 export interface TreeToolDeps {
   storage: StorageLike
@@ -18,9 +19,14 @@ export interface TreeToolDeps {
   context?(input: { sessionID: string }): Promise<readonly import("./lib/recover.ts").RecoveryMessage[]>
   switchModel?(input: { sessionID: string; model: { providerID: string; id: string } }): Promise<void>
   listSessions?(input: RecoveryListInput): Promise<{ data: readonly RecoverSession[]; cursor?: { next?: string } }>
+  /** Status/views projection. Supplied by the plugin entrypoint, which owns the DB path and host. */
+  status?(input: ProjectStatusInput): Promise<StatusProjection>
   sleep?(ms: number): Promise<void>
   now?(): number
 }
+
+/** Rows a single `tree.status` call may put in the transcript. */
+const MAX_TOOL_SESSIONS = 200
 
 /** The subset of the tool-execution context these handlers read. */
 export interface ToolCall {
@@ -312,10 +318,75 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
     },
   }
 
-  return { whoami, family, journal, handoff, wake, recover }
+  const status: TreeTool = {
+    name: "status",
+    description:
+      "Filtered projection over the session views. Answers \"which sessions are running, paused on a question, or restart " +
+      "candidates\" from the session database merged with the host's live running set and pending forms. `sessions` lists the " +
+      "rows of the selected view; `meta.scanned` reports how much of the inventory was read. userSpawned and waveIndex have no " +
+      "source and are reported under meta.unavailable rather than guessed.",
+    input: {
+      type: "object",
+      properties: {
+        view: {
+          type: "string",
+          description:
+            "default | running | needs-restart | question-paused | tree:<rootId> | subtree:<id>. Default `default` " +
+            "(a documented proxy for a user-started conversation: root and not a fork and not scheduled).",
+        },
+        rootId: { type: "string", description: "Bind the tree view to a root session. Also accepts any session id." },
+        subtreeOf: { type: "string", description: "Bind the subtree view to a session; self-inclusive." },
+        limit: { type: "integer", minimum: 1, description: "Inventory cap. Default 2000." },
+      },
+      additionalProperties: false,
+    },
+    async execute(input) {
+      if (!deps.status) throw new Error("tree.status requires a status projection dependency")
+      const view = asString(input.view)
+      const projection = await deps.status({
+        ...(view ? { view } : {}),
+        ...(asString(input.rootId) ? { rootId: asString(input.rootId) } : {}),
+        ...(asString(input.subtreeOf) ? { subtreeOf: asString(input.subtreeOf) } : {}),
+        ...(typeof input.limit === "number" ? { limit: Math.max(1, Math.trunc(input.limit)) } : {}),
+      })
+
+      const selectedName = projection.meta.view
+      const membership = projection.views[selectedName] ?? { count: 0, ids: [] }
+      if (membership.skipped) throw new Error(`${selectedName}: ${membership.skipped}`)
+      const wanted = new Set(membership.ids ?? [])
+      const rows = projection.sessions.filter((session) => wanted.has(session.id))
+      const shown = rows.slice(0, MAX_TOOL_SESSIONS)
+
+      // Counts only for the other views: the ids are already implied by `sessions`.
+      const viewSummary: Record<string, unknown> = {}
+      for (const [name, entry] of Object.entries(projection.views)) {
+        viewSummary[name] = {
+          count: entry.count,
+          ...(entry.skipped ? { skipped: entry.skipped } : {}),
+          ...(entry.isProxy ? { isProxy: true } : {}),
+          ...(entry.note ? { note: entry.note } : {}),
+        }
+      }
+
+      return ok({
+        view: selectedName,
+        sessions: shown,
+        views: viewSummary,
+        meta: {
+          ...projection.meta,
+          rowCount: rows.length,
+          ...(shown.length < rows.length
+            ? { omittedRows: rows.length - shown.length, omitNote: `rows beyond the first ${MAX_TOOL_SESSIONS} are omitted from this response; use scripts/tree-status.mjs --json for the full set` }
+            : {}),
+        },
+      })
+    },
+  }
+
+  return { whoami, family, journal, handoff, wake, recover, status }
 }
 
 export const TREE_NAMESPACE = {
   name: "tree",
-  description: "Agent family trees: identity, family graph, durable journals, handoff, wake and recursive recovery.",
+  description: "Agent family trees: identity, family graph, durable journals, handoff, wake, recovery and status views.",
 }

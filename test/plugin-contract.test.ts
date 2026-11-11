@@ -4,6 +4,7 @@ import assert from "node:assert/strict"
 import plugin from "../src/index.ts"
 import { readJournal } from "../src/lib/journal.ts"
 import { makeFakeCtx, seedFamily } from "./fake-ctx.ts"
+import { writeSessionDb } from "./status-fixture.ts"
 
 async function registerTools(
   fixture: ReturnType<typeof makeFakeCtx>,
@@ -52,7 +53,7 @@ test("all registered tree tools declare and return the V2 structured-output cont
 
   assert.deepEqual(
     registered.map((tool) => tool.name).sort(),
-    ["family", "handoff", "journal", "wake", "whoami"],
+    ["family", "handoff", "journal", "status", "wake", "whoami"],
   )
 
   const inputs: Record<string, Record<string, unknown>> = {
@@ -61,17 +62,40 @@ test("all registered tree tools declare and return the V2 structured-output cont
     journal: { action: "read" },
     handoff: { childID: "ses_child", summary: "finished" },
     wake: { sessionID: "ses_root", text: "wake" },
+    status: { view: "default" },
   }
   const caller = { sessionID: "ses_root", agent: "orchestrator", messageID: "msg_test", id: "call_test" }
 
-  for (const tool of registered) {
-    assert.deepEqual(tool.output, { type: "object", additionalProperties: true }, `${String(tool.name)} output schema`)
-    const result = await (tool.execute as (input: Record<string, unknown>, context: typeof caller) => Promise<Record<string, unknown>>)(
-      inputs[String(tool.name)]!,
-      caller,
-    )
-    assert.equal(typeof result.content, "string", `${String(tool.name)} content`)
-    assert.ok(result.output && typeof result.output === "object", `${String(tool.name)} structured output`)
+  // tree.status reads the session database and the host. Point both at a
+  // throwaway fixture so this contract test stays hermetic and proves the
+  // documented degradation path instead of depending on a live machine.
+  const database = writeSessionDb([{ id: "ses_statusroot", created: 1, updated: 2, outcome: "succeeded" }])
+  const previousDb = process.env.OPENCODE_DB
+  const previousHost = process.env.OPENCHAMBER_HOST
+  process.env.OPENCODE_DB = database.path
+  process.env.OPENCHAMBER_HOST = "http://127.0.0.1:1"
+  try {
+    for (const tool of registered) {
+      assert.deepEqual(tool.output, { type: "object", additionalProperties: true }, `${String(tool.name)} output schema`)
+      const result = await (tool.execute as (input: Record<string, unknown>, context: typeof caller) => Promise<Record<string, unknown>>)(
+        inputs[String(tool.name)]!,
+        caller,
+      )
+      assert.equal(typeof result.content, "string", `${String(tool.name)} content`)
+      assert.ok(result.output && typeof result.output === "object", `${String(tool.name)} structured output`)
+      if (tool.name === "status") {
+        const status = result.output as { sessions: unknown[]; meta: { stale: boolean; view: string } }
+        assert.equal(status.meta.view, "default")
+        assert.equal(status.meta.stale, true, "an unreachable host degrades to a DB-only projection")
+        assert.deepEqual(status.sessions.map((session) => (session as { id: string }).id), ["ses_statusroot"])
+      }
+    }
+  } finally {
+    if (previousDb === undefined) delete process.env.OPENCODE_DB
+    else process.env.OPENCODE_DB = previousDb
+    if (previousHost === undefined) delete process.env.OPENCHAMBER_HOST
+    else process.env.OPENCHAMBER_HOST = previousHost
+    database.cleanup()
   }
 })
 

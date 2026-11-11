@@ -5,8 +5,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 // Point this at your OpenCode session database. Override with --db or OPENCODE_DB.
+// OpenCode follows the XDG data dir when it is set; the tilde path is a
+// different instance on machines that set XDG_DATA_HOME.
 const DEFAULT_DB =
-  process.env.OPENCODE_DB || join(homedir(), '.local/share/opencode/opencode.db');
+  process.env.OPENCODE_DB ||
+  (process.env.XDG_DATA_HOME
+    ? join(process.env.XDG_DATA_HOME, 'opencode/opencode.db')
+    : join(homedir(), '.local/share/opencode/opencode.db'));
 const DEFAULT_MODEL = 'opencode-go/deepseek-v4.1-flash';
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 const DASHBOARD = 'http://localhost:3000/dashboard?session=';

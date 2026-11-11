@@ -8,6 +8,7 @@ An OpenCode V2 server plugin that gives agents a view of their family tree and a
 - `tree_handoff` — records a descendant's report and prompts its actual parent with `resume: true`, even when that parent is finished; the child and caller must share a session-family root.
 - `tree_wake` — a thin `ctx.session.prompt` wrapper for any session.
 - `tree_recover` — recursively resumes a failed session tree leaf-first, with optional NRR-title discovery, sibling barriers, staged separate handoffs, and a structured recovery report.
+- `tree_status` — filtered projection over six named views (running, paused, restart candidates, one tree, one subtree), merging the session database with the host's live running set and pending forms.
 - Hooks journal child-dispatch results and provider retry-policy decisions, including terminal decisions exposed by the retry hook.
 
 ## Install
@@ -44,6 +45,8 @@ The plugin ID is `agent-trees`; the tool namespace is `tree`.
 | `ctx.tool.transform`, namespaces, raw JSON Schema inputs, tool `execute(input, context)`, and `ctx.tool.hook("execute.after")` | Documented | [V2 server plugin guide](https://opencode.ai/v2/docs/build/plugins/server) |
 | `context.sessionID` identifies the calling tool session | Documented | Tool executor context in the V2 server guide |
 | `Session.Info.parentID` plus `ctx.session.list({ parentID })` represent the parent/child relation | Documented | Session `get` / `list` APIs in the V2 server guide |
+| `session_v2` carries `parent_id`, `idle_outcome`, `time_idle`, `time_archived`, `time_suspended` and `fork_session_id`, with an index on `parent_id` | Observed schema | The live OpenCode session database; `time_suspended` is written by `SessionStore.claim` (`packages/core/src/session/store.ts`) |
+| The host's `/api/session/active` and `/api/sessions/status` are the live running-set and pending-form source | Observed host API, not a documented OpenCode API | Probed live 2026-11-11: `{data:{sid:{type:"running"}}}` and `{sessions, pending, serverTime}`. Both require host auth — HTTP 401 without a session cookie. |
 | `ctx.session.prompt({ sessionID, text, resume })` has no ancestry restriction and can resume a finished, unrelated session | Documented API shape; behavior confirmed by live spike | API docs expose `sessionID` and `resume`; spike below tested a standalone finished root |
 | Session listing with `parentID` is enough to reconstruct the tree, including siblings and cousins | Inferred composition | The documented parent field and filtered list API; covered by unit + live tests |
 | Built-in child-dispatch tool name is `subagent` | Inferred / runtime-dependent | Current live registry lists `opencode.tool.subagent`; hook matches `subagent`, `task`, and `spawn` to tolerate naming variants |
@@ -98,7 +101,7 @@ The result includes ordered `actions`, staged `handoffs`, unresolved `barriers`,
 
 ## View scripts
 
-Two optional, read-only helper scripts render the same tree outside the plugin. Both are plain ESM and require Node 22+; neither is part of the published package (`package.json` `files` is `src` only) — they exist for local inspection.
+Three optional, read-only helper scripts render the same tree outside the plugin. All are plain ESM and require Node 22+; none is part of the published package (`package.json` `files` is `src` only) — they exist for local inspection.
 
 ```sh
 # Print the family tree from a live OpenCode session database.
@@ -106,12 +109,76 @@ node scripts/tree-view.mjs --root ses_... [--mode restart|json] [--depth N] [--d
 
 # Render the sidebar/dashboard view for a running instance.
 node scripts/sidebar-view.mjs [--json] [--cli PATH] [--db PATH] [--port PORT] [--out FILE]
+
+# Print one view of the status projection (see Views below).
+node scripts/tree-status.mjs [--view <name>] [--json] [--all] [--db PATH] [--host URL|off]
 ```
 
-- `tree-view.mjs` reads the session DB. Point it at yours with `--db` or `OPENCODE_DB`; the default is `$HOME/.local/share/opencode/opencode.db`.
+- `tree-view.mjs` reads the session DB. Point it at yours with `--db` or `OPENCODE_DB`; the default is `$XDG_DATA_HOME/opencode/opencode.db`, falling back to `$HOME/.local/share/opencode/opencode.db`. Those are different instances — pass `--db` when in doubt.
+- `tree-status.mjs` resolves its database the same way and merges the host's live state; see [Views](#views).
 - `sidebar-view.mjs` shells out to an OpenChamber CLI. Configure it with `--cli` / `OPENCHAMBER_CLI` and `--db` / `OPENCODE_DB`.
 - `--pin-model` on `tree-view.mjs` defaults to `opencode-go/deepseek-v4.1-flash`; pass your own with `--pin-model provider/model`.
 
+## Views
+
+`tree.status` (and `scripts/tree-status.mjs`) answers "what is running, what is paused on a question, what is restartable" from one projection. The view names and the filter vocabulary are declared once in [`src/lib/views.json`](./src/lib/views.json); the engine, the CLI and this section all read that file, so a view cannot drift from its definition.
+
+```sh
+node scripts/tree-status.mjs [--view <name>] [--root <id>] [--subtree <id>] \
+  [--json] [--limit N] [--all] [--db PATH] [--host URL | --host off]
+```
+
+### The six views
+
+| View | Filters | What it answers |
+|---|---|---|
+| `default` | `isRoot ∧ ¬fork ∧ ¬scheduled` | Conversations you started. **This is a proxy** — see below. |
+| `running` | `status = running` | Sessions with a turn in flight or holding the execution claim. |
+| `needs-restart` | `status ∈ {idle, unknown} ∧ ¬archived ∧ outcome ∈ {failed, interrupted}` | Restart candidates: recorded failures that are not running. A session with no recorded outcome is never listed. |
+| `question-paused` | `status = running ∧ hasPendingForm` | Sessions genuinely waiting on a question. |
+| `tree:<rootId>` | `rootId = <id>` | Every session in one tree, including the root (also `--root <id>`). |
+| `subtree:<id>` | `isSubtreeOf <id>` | One session and everything beneath it, self-inclusive (also `--subtree <id>`). |
+
+`default` is a **documented proxy, not a field**. Upstream exposes no user-spawned flag, so `isRoot ∧ ¬fork ∧ metadata.openchamber.kind ≠ 'scheduled'` is the closest available approximation of "a conversation the user started". A session with no metadata counts as not scheduled, which widens the view instead of hiding rows; a scheduled session that was never labelled is indistinguishable from a user one.
+
+`question-paused` requires **both** halves on purpose. A paused session still reports `busy` and holds the execution claim, so status alone cannot find it; and a form can outlive its turn, so a pending form alone is not proof of a pause. A pending form with no running turn is a stale form and does not qualify.
+
+### Filter vocabulary
+
+| Filter | Type | Derived from |
+|---|---|---|
+| `isRoot` / `hasParent` | boolean | `parent_id` present or absent |
+| `parentId` | string | `session_v2.parent_id` |
+| `rootId` | string | walking `parent_id` to the top of the chain |
+| `depth` | integer or `{min,max}` | number of parent hops to the root (a root is `0`) |
+| `inTree` | boolean | has a parent or at least one child |
+| `isSubtreeOf` | string | anchor is the session or one of its ancestors (self-inclusive) |
+| `isLeaf` | boolean | no session names it as a parent — checked against the whole table, not just the page |
+| `status` | `running` \| `idle` \| `unknown` | live running set, else host status, else recorded `time_idle` / `idle_outcome` |
+| `hasPendingForm` | boolean | `pending[sid].forms` non-empty on the host |
+| `archived` | boolean | `time_archived` present |
+| `claimed` | boolean | `time_suspended` present — the marker `SessionStore.claim` writes at turn start |
+| `project` | string | `session_v2.project_id` |
+| `outcome` | `succeeded` \| `failed` \| `interrupted` \| `none` | `session_v2.idle_outcome` |
+| `fork` | boolean | `fork_session_id` present |
+| `scheduled` | boolean | `metadata.openchamber.kind === "scheduled"` |
+| `lastActivity` | epoch-ms, ISO, or `{after,before}` | `max(time_updated, time_idle)` |
+
+### Known unavailable
+
+Two filters have **no source** and are reported under `meta.unavailable` with their reason instead of being guessed. No session row carries either field, and requesting one as a filter fails loudly.
+
+| Field | Why it is unavailable |
+|---|---|
+| `userSpawned` | `session_v2` has no spawn-provenance column, and neither host endpoint reports who created a session. "Root and not a fork and not scheduled" is a proxy for it, not the thing itself. |
+| `waveIndex` | Wave or batch membership is recorded nowhere — not on the session row, not by the host. `depth` answers "how deep", not "which wave". |
+
+### Data sources and honesty rules
+
+- **Inventory** — `session_v2`, paged newest-first with a default cap of 2000 (`--all` pages everything). Child counts and ancestor chains come from the whole table, so `depth`, `rootId` and `isLeaf` stay correct even when the page is capped, and `meta.truncated` says the page was capped.
+- **Live overlay** — `/api/session/active` (running ids) and `/api/sessions/status` (per-session status and `pending[sid].forms[]`). `/api/form` is directory-scoped and is deliberately **not** used.
+- **Degradation** — when the host is unreachable the projection still returns database rows, sets `meta.stale: true`, and warns that pending forms are unknown. It never reports "no pending forms" as a fact it did not observe.
+- **Auth** — the CLI reads the host runfile (`~/.config/openchamber/run/openchamber-<port>.json`) in process, sends that password only to a loopback host, and never prints it or puts it in argv.
 ## Dashboard (design only — not implemented)
 
 There is **no dashboard in this repository.** `docs/design/` holds a design sketch only:
@@ -131,6 +198,8 @@ No implementation is approved, no dashboard code ships here, and `sidebar-view.m
 - The `tool.execute.after` hook runs after a tool execution. If a process is killed before that hook, it cannot record the result. Provider failures are journaled when OpenCode reaches the `session.retry` policy hook; failures outside that provider retry path are not covered by a general terminal-failure hook.
 - The child tool name and child-ID payload are implementation details, not a stable public API. Hook matching is intentionally defensive; check logs after OpenCode upgrades.
 - Model and agent fields reflect the session metadata OpenCode returns; this plugin does not pin or change child models.
+- `tree_status` reads a capped inventory by default (2000 rows, newest first) and says so with `meta.truncated`; pass `--all` or a larger `limit` when a view must be exhaustive. Child counts and ancestor chains are read from the whole table, so `depth`, `rootId` and `isLeaf` are correct even when the page is capped.
+- `tree_status` needs the host for run state and pending forms. Without it the projection is database-only, sets `meta.stale: true`, and reports pending forms as unknown rather than absent. `userSpawned` and `waveIndex` have no source at all and are reported as unavailable.
 - Initial live integration failed with `Tool result declared output without an output schema`. The V2 runtime's execution branch rejects a returned object that owns `output` when the tool has no output schema; the earlier content-only adapter did not explain why that live path observed `output`. All registered tools declare the V2 object output schema and return structured `output` plus readable `content`. Post-change calls in the already-loaded shared service still returned the same error, and its catalog still advertises the old handoff description; the source fix is not live-verified because the shared service was not restarted or reloaded.
 - The shared database already contained one historical failed `opencode-go/deepseek-v4.1-flash` child (`Go usage limit exceeded`). It predates this plugin installation, so it did not produce a plugin hook journal entry. A separate free-tier failure was captured by the live `subagent` hook, but its child ID was only embedded in the error text; the current source now extracts IDs from that text, and this adjusted hook behavior has not yet been re-triggered live.
 
