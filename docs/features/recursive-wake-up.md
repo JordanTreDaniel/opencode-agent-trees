@@ -1,7 +1,7 @@
 # F-01 — Recursive leaf-first recovery
 
 > **Status:** implemented; lifecycle: verified.
-> Implementation status (2026-11-01): tree.recover implements the recursive routine and NRR discovery; adversarial/live verification passed 2026-11-09 on attempt 9 (see docs/proof/f01v1-demo/).
+> Implementation status (2026-11-01): tree.recover implements the recursive routine and NRR discovery; adversarial/live verification passed 2026-11-09 on attempt 9 (see the private live-run capture, not published).
 
 This page is generated from [`features.json`](./features.json) (the canonical F-01 record) by `node scripts/render-wake-up.mjs`. The JSON Schema is [`schema.json`](./schema.json).
 
@@ -134,4 +134,4 @@ The failed build translated the requested workflow into five primitives—`whoam
 ## Record notes
 
 - The inventory combines two exact quote fragments from the same source message.
-- Verified 2026-11-09: F-01-V1 acceptance passed on attempt 9 (root ses_e408c94f5ffewWj2xFGZsfC8z4) — an exact 1/2/4 tree of 7 sessions was built and interrupted, tree.recover resumed all 7 with rootReactivated=true, all 6 handoffs were delivered with parentResumed=true, and every original session finished idle_outcome=succeeded with a recovery:done journal entry (descendant count still exactly 7). Adversarial verification PASSed against the primary artifacts. Evidence: docs/proof/f01v1-demo/.
+- Verified 2026-11-09: F-01-V1 acceptance passed on attempt 9 (root ses_e408c94f5ffewWj2xFGZsfC8z4) — an exact 1/2/4 tree of 7 sessions was built and interrupted, tree.recover resumed all 7 with rootReactivated=true, all 6 handoffs were delivered with parentResumed=true, and every original session finished idle_outcome=succeeded with a recovery:done journal entry (descendant count still exactly 7). Adversarial verification PASSed against the primary artifacts. Evidence: the private live-run capture, not published.

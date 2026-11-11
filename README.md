@@ -14,6 +14,8 @@ An OpenCode V2 server plugin that gives agents a view of their family tree and a
 
 Requires OpenCode V2. This package targets OpenCode `2.1.2` and pins `@opencode/plugin` to the matching version.
 
+Node.js 22 or newer — the optional `scripts/tree-view.mjs` uses the built-in `node:sqlite` module, and the test suite runs TypeScript through `tsx`.
+
 ### Package / local directory
 
 Add the package name or local directory to `plugins` in `opencode.json` / `opencode.jsonc`:
@@ -94,6 +96,32 @@ Credit/auth failures stop the entire run; network failures retry the same prompt
 
 The result includes ordered `actions`, staged `handoffs`, unresolved `barriers`, per-node model labels, aggregate stats, and `rootReactivated`. Use `dryRun` before the first live recovery when the target tree is uncertain.
 
+## View scripts
+
+Two optional, read-only helper scripts render the same tree outside the plugin. Both are plain ESM and require Node 22+; neither is part of the published package (`package.json` `files` is `src` only) — they exist for local inspection.
+
+```sh
+# Print the family tree from a live OpenCode session database.
+node scripts/tree-view.mjs --root ses_... [--mode restart|json] [--depth N] [--db PATH]
+
+# Render the sidebar/dashboard view for a running instance.
+node scripts/sidebar-view.mjs [--json] [--cli PATH] [--db PATH] [--port PORT] [--out FILE]
+```
+
+- `tree-view.mjs` reads the session DB. Point it at yours with `--db` or `OPENCODE_DB`; the default is `$HOME/.local/share/opencode/opencode.db`.
+- `sidebar-view.mjs` shells out to an OpenChamber CLI. Configure it with `--cli` / `OPENCHAMBER_CLI` and `--db` / `OPENCODE_DB`.
+- `--pin-model` on `tree-view.mjs` defaults to `opencode-go/deepseek-v4.1-flash`; pass your own with `--pin-model provider/model`.
+
+## Dashboard (design only — not implemented)
+
+There is **no dashboard in this repository.** `docs/design/` holds a design sketch only:
+
+- [`docs/design/agent-manager-dashboard.excalidraw`](./docs/design/agent-manager-dashboard.excalidraw) — a 76-element Excalidraw sketch of a possible Agent Manager dashboard. Open it at [excalidraw.com](https://excalidraw.com) → *Open*, or with the VS Code Excalidraw extension.
+- [`docs/design/agent-manager-dashboard.md`](./docs/design/agent-manager-dashboard.md) — the one-paragraph pointer to that file.
+- [`docs/superpowers/specs/2026-11-10-agent-manager-dashboard-design.md`](./docs/superpowers/specs/2026-11-10-agent-manager-dashboard-design.md) — the design spec and data-contract notes behind the sketch.
+
+No implementation is approved, no dashboard code ships here, and `sidebar-view.mjs` is not that dashboard — it is a terminal/JSON view over an existing OpenChamber UI.
+
 ## Known limitations
 
 - Journal entries are JSON values in OpenCode plugin storage, not SQLite session history. There is no compare-and-swap primitive in the documented storage interface; appends from separate server processes are not guaranteed atomic.
@@ -115,3 +143,11 @@ npm run typecheck
 ```
 
 Tests cover journal concurrency, identity derivation, sibling-inclusive trees, recursive recovery and NRR discovery, truncation, cycle defense, handoff formatting, and tool handlers. Live-server behavior must still be rechecked after changing OpenCode versions.
+
+## Status
+
+Early-stage (0.1.x) and not affiliated with or endorsed by the OpenCode project. The plugin's live behavior depends on OpenCode V2 runtime internals that are not a stable public API — see [Known limitations](#known-limitations) before relying on it.
+
+## License
+
+[MIT](./LICENSE) © 2026 Jordan Christley

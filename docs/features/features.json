@@ -30,7 +30,7 @@
           "expected_values": {
             "leaf_first_recovery": "true"
           },
-          "evidence": "Observable session/tree state and a recorded recovery result; capture a screenshot or structured event when available. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "evidence": "Observable session/tree state and a recorded recovery result; capture a screenshot or structured event when available. Evidence: the private live-run capture, not published (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
           "status": "pass"
         }
       ],
@@ -127,8 +127,8 @@
     ],
     "notes": [
       "The inventory combines two exact quote fragments from the same source message.",
-      "Verified 2026-11-09: F-01-V1 acceptance passed on attempt 9 (root ses_e408c94f5ffewWj2xFGZsfC8z4) — an exact 1/2/4 tree of 7 sessions was built and interrupted, tree.recover resumed all 7 with rootReactivated=true, all 6 handoffs were delivered with parentResumed=true, and every original session finished idle_outcome=succeeded with a recovery:done journal entry (descendant count still exactly 7). Adversarial verification PASSed against the primary artifacts. Evidence: docs/proof/f01v1-demo/.",
-      "Implementation status (2026-11-01): tree.recover implements the recursive routine and NRR discovery; adversarial/live verification passed 2026-11-09 on attempt 9 (see docs/proof/f01v1-demo/).",
+      "Verified 2026-11-09: F-01-V1 acceptance passed on attempt 9 (root ses_e408c94f5ffewWj2xFGZsfC8z4) — an exact 1/2/4 tree of 7 sessions was built and interrupted, tree.recover resumed all 7 with rootReactivated=true, all 6 handoffs were delivered with parentResumed=true, and every original session finished idle_outcome=succeeded with a recovery:done journal entry (descendant count still exactly 7). Adversarial verification PASSed against the primary artifacts. Evidence: the private live-run capture, not published.",
+      "Implementation status (2026-11-01): tree.recover implements the recursive routine and NRR discovery; adversarial/live verification passed 2026-11-09 on attempt 9 (see the private live-run capture, not published).",
       "Coordinator scope: The specified steps describe the desired outcome and handoff preference, but do not specify coordinator implementation mechanics. Do not infer a payload schema, summary length, or coordination mechanism from “summary” and “brief note.”",
       "Termination condition: The specified stopping point is: the root is reactivated with all descendants successfully finished. What “successfully finished” proves, and whether root reactivation is sufficient or the root’s task must also be complete, remain open questions. Do not claim the workflow is verified until that termination contract is resolved and observable proof passes.",
       "Why this was lost: The failed build translated the requested workflow into five primitives—`whoami`, `family`, `journal`, `handoff`, and `wake`—but never implemented the crawler, the sibling barrier, or upward result bubbling. Those primitives do not by themselves satisfy the leaf-first recovery feature."
@@ -301,7 +301,7 @@
           "expected_values": {
             "descendants_discovered": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: the private live-run capture, not published (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
           "status": "pass"
         }
       ],
@@ -331,7 +331,7 @@
     },
     "ambiguities": [],
     "notes": [
-      "Verified 2026-11-09: rootId entry with no child ids supplied — the demo invoked recovery with only the root id and discovery enumerated the full 1/2/4 family (7 sessions) before resuming. Evidence: docs/proof/f01v1-demo/ (attempt 9, root ses_e408c94f5ffewWj2xFGZsfC8z4)."
+      "Verified 2026-11-09: rootId entry with no child ids supplied — the demo invoked recovery with only the root id and discovery enumerated the full 1/2/4 family (7 sessions) before resuming. Evidence: the private live-run capture, not published (attempt 9, root ses_e408c94f5ffewWj2xFGZsfC8z4)."
     ],
     "links": {
       "storyId": "US-002",
@@ -373,7 +373,7 @@
           "expected_values": {
             "direct_parent_receives_result": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: the private live-run capture, not published (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
           "status": "pass"
         }
       ],
@@ -408,7 +408,7 @@
     "notes": [
       "End-to-end recovery composition is implemented via the tree.recover coordinator (leaf resume → separate handoffs → sibling barrier → upward bubbling); pending adversarial/live verification.",
       "Recovery coordinator collects assistant output and stages one resume:false handoff to the direct parent; child agents do not independently wake parents.",
-      "Verified 2026-11-09: leaf resume plus parent propagation — 6 of 6 handoffs recorded parentResumed=true, and both mids reported their childrens results upward before the root was reactivated. Evidence: docs/proof/f01v1-demo/ (attempt 9, 6/6 parentResumed)."
+      "Verified 2026-11-09: leaf resume plus parent propagation — 6 of 6 handoffs recorded parentResumed=true, and both mids reported their childrens results upward before the root was reactivated. Evidence: the private live-run capture, not published (attempt 9, 6/6 parentResumed)."
     ],
     "links": {
       "storyId": "US-003",
@@ -450,7 +450,7 @@
           "expected_values": {
             "all_required_siblings_complete": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: the private live-run capture, not published (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
           "status": "pass"
         }
       ],
@@ -482,7 +482,7 @@
       "Does the barrier include only failed children or every outstanding child?"
     ],
     "notes": [
-      "Verified 2026-11-09: sibling barrier — barrier blocks were observed in demo attempts 5-8 (a timed-out leaf held its parents and the root as blocked-barrier) and the barrier cleared on attempt 9 (barriers=[] with all 7 resumed). Evidence: docs/proof/f01v1-demo/ (attempts 5-9)."
+      "Verified 2026-11-09: sibling barrier — barrier blocks were observed in demo attempts 5-8 (a timed-out leaf held its parents and the root as blocked-barrier) and the barrier cleared on attempt 9 (barriers=[] with all 7 resumed). Evidence: the private live-run capture, not published (attempts 5-9)."
     ],
     "links": {
       "storyId": "US-004",
@@ -524,7 +524,7 @@
           "expected_values": {
             "separate_attributed_handoffs": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: the private live-run capture, not published (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
           "status": "pass"
         }
       ],
@@ -558,7 +558,7 @@
     "notes": [
       "User correction: do not combine child handoffs.",
       "Separate queued messages are used for recovered direct children. If staging fails, the run aborts without merging or triggering the parent.",
-      "Verified 2026-11-09: separate handoffs — 6 handoffs, exactly one per recovered child, each delivered=true and parentResumed=true, never merged. Evidence: docs/proof/f01v1-demo/ (attempt 9, result.json handoffs)."
+      "Verified 2026-11-09: separate handoffs — 6 handoffs, exactly one per recovered child, each delivered=true and parentResumed=true, never merged. Evidence: the private live-run capture, not published (attempt 9, result.json handoffs)."
     ],
     "links": {
       "storyId": "US-005",
@@ -635,7 +635,7 @@
     "notes": [
       "Some hook journaling exists; no complete classifier or recovery policy is established.",
       "Credits/auth abort immediately; network errors retry the same prompt up to three total attempts; timeouts and unknown failures are reported without model changes.",
-      "Verified with two live proofs: credit-class run-wide stop — the Deal Pipe run recorded stoppedBy:\"credits\" on 2026-11-02, aborting the run rather than retrying; timeout-class one-attempt blocking — demo attempts 5-8 reported a transient leaf timeout as blocked-timeout for that attempt (rootReactivated=false) instead of retrying across the run, with the barrier holding the rest of the tree. Evidence: docs/proof/f01v1-demo/ (attempts 5-8) plus the 2026-11-02 Deal Pipe run."
+      "Verified with two live proofs: credit-class run-wide stop — the Deal Pipe run recorded stoppedBy:\"credits\" on 2026-11-02, aborting the run rather than retrying; timeout-class one-attempt blocking — demo attempts 5-8 reported a transient leaf timeout as blocked-timeout for that attempt (rootReactivated=false) instead of retrying across the run, with the barrier holding the rest of the tree. Evidence: the private live-run capture, not published (attempts 5-8) plus the 2026-11-02 Deal Pipe run."
     ],
     "links": {
       "storyId": "US-006",
@@ -677,7 +677,7 @@
           "expected_values": {
             "completed_work_reconciled": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: the private live-run capture, not published (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
           "status": "pass"
         }
       ],
@@ -711,7 +711,7 @@
     ],
     "notes": [
       "Completion accounting uses succeeded outcomes, recovery:done journal entries, and terminal successful assistant messages after the last error. Competing work quality is not ranked.",
-      "Verified 2026-11-09: work accounting — journaled alreadyComplete skips were observed across demo attempts 6-8 (alreadyComplete=4, no repeated work) and the Phase-4 journal gate required all 7 originals to finish succeeded with a recovery:done journal row. Evidence: docs/proof/f01v1-demo/ (attempts 6-9)."
+      "Verified 2026-11-09: work accounting — journaled alreadyComplete skips were observed across demo attempts 6-8 (alreadyComplete=4, no repeated work) and the Phase-4 journal gate required all 7 originals to finish succeeded with a recovery:done journal row. Evidence: the private live-run capture, not published (attempts 6-9)."
     ],
     "links": {
       "storyId": "US-007",
@@ -827,7 +827,7 @@
           "expected_values": {
             "resume_diagnostic_complete": "true"
           },
-          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: docs/proof/f01v1-demo/ (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
+          "evidence": "A user-visible result or durable record demonstrating the stated outcome; attach the concrete artifact when the feature is implemented. Evidence: the private live-run capture, not published (attempt 9, 2026-11-09, root ses_e408c94f5ffewWj2xFGZsfC8z4, ACCEPTANCE PASS).",
           "status": "pass"
         }
       ],
@@ -859,7 +859,7 @@
       "What exact presentation and retention period are wanted for the diagnostic?"
     ],
     "notes": [
-      "Verified 2026-11-09: the recovery diagnostic was injected verbatim with guardrails and stayed within the 6-line report cap in attempts 5-9. Evidence: docs/proof/f01v1-demo/ (result.json diagnostics; attempt logs)."
+      "Verified 2026-11-09: the recovery diagnostic was injected verbatim with guardrails and stayed within the 6-line report cap in attempts 5-9. Evidence: the private live-run capture, not published (result.json diagnostics; attempt logs)."
     ],
     "links": {
       "storyId": "US-009",
@@ -2488,7 +2488,7 @@
           "expected_values": {
             "excluded_session_left_untouched": "true"
           },
-          "evidence": "Live run 2026-11-09 (attempt 1): tree.recover with excludeSessionIds=[\"ses_e41067cc9ffec9saeWccSSRz7W\"] + pinModel on root ses_e4899da77ffePz9Nv16xGqJ0HB. Primary evidence: docs/proof/f31-exclusion/ (result.json + run.log + README.md) shows action skipped-superseded for the excluded session (stats.skippedSuperseded=1), barriers=[], rootReactivated=true, zero blocked/pending, 3 handoffs each delivered && parentResumed, and exactly 4 of 124 sessions under the root touched after run start. Rig DB confirms the excluded session got zero new messages and zero model-switched rows (last message 2026-11-09T06:23:16.622Z, model still openai/gpt-6-luna, outcome failed) while all 4 resumed sessions were model-switched luna→mimo before their first prompt (switch→prompt: 1794221835277→1794221835324, 1794221855292→1794221855330, 1794221905756→1794221905792, 1794221932359→1794221932400). Secondary copies: /tmp/orchestrator-state/demo-recover/e4899da77-recover-result.json and ~/dev/opencode-v2-test/tmp/opencode/e4899da77-recover.log.",
+          "evidence": "Live run 2026-11-09 (attempt 1): tree.recover with excludeSessionIds=[\"ses_e41067cc9ffec9saeWccSSRz7W\"] + pinModel on root ses_e4899da77ffePz9Nv16xGqJ0HB. Primary evidence: the private live-run capture, not published (result.json + run.log + README.md) shows action skipped-superseded for the excluded session (stats.skippedSuperseded=1), barriers=[], rootReactivated=true, zero blocked/pending, 3 handoffs each delivered && parentResumed, and exactly 4 of 124 sessions under the root touched after run start. Rig DB confirms the excluded session got zero new messages and zero model-switched rows (last message 2026-11-09T06:23:16.622Z, model still openai/gpt-6-luna, outcome failed) while all 4 resumed sessions were model-switched luna→mimo before their first prompt (switch→prompt: 1794221835277→1794221835324, 1794221855292→1794221855330, 1794221905756→1794221905792, 1794221932359→1794221932400). Secondary copies: earlier scratch copies on the machine that ran the demo.",
           "status": "pass"
         }
       ],
@@ -2523,7 +2523,7 @@
     "notes": [
       "Exclusion applies to nodes classified failed, interrupted, or unknown: they are recorded as skipped-superseded and count as already-complete for barrier purposes. Excluded succeeded nodes already fall through the already-complete branch; excluded running nodes stay pending (conservative — they are not silently marked complete).",
       "An excluded node is barrier-satisfying even when its own children remain unresolved, so a superseded batch cannot deadlock the parent that outlived it.",
-      "Verified live 2026-11-09 (attempt 1) on root ses_e4899da77ffePz9Nv16xGqJ0HB excluding ses_e41067cc9ffec9saeWccSSRz7W: skipped-superseded recorded, excluded session untouched in the rig DB, 4 sessions resumed under pinModel, rootReactivated. Evidence: /tmp/orchestrator-state/demo-recover/e4899da77-recover-result.json and ~/dev/opencode-v2-test/tmp/opencode/e4899da77-recover.log."
+      "Verified live 2026-11-09 (attempt 1) on root ses_e4899da77ffePz9Nv16xGqJ0HB excluding ses_e41067cc9ffec9saeWccSSRz7W: skipped-superseded recorded, excluded session untouched in the rig DB, 4 sessions resumed under pinModel, rootReactivated. Evidence: earlier scratch copies on the machine that ran the demo."
     ],
     "links": {
       "storyId": "US-031",
