@@ -1,0 +1,38 @@
+{
+  "name": "@agent-trees/session-views",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenChamber extension that renders the agent-tree session views (default proxy, running, needs-restart, question-paused, tree, subtree) declared in src/lib/views.json.",
+  "license": "MIT",
+  "openchamber": {
+    "apiVersion": 1,
+    "engines": {
+      "openchamber": ">=1.24.0"
+    },
+    "contributes": {
+      "panel": {
+        "id": "session-views",
+        "name": "Session Views",
+        "icon": "list-check-2",
+        "entry": "panel/index.html"
+      },
+      "page": true,
+      "capabilities": [
+        "sessions"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "openchamber-guest-bundle panel/main.ts panel/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "preview": "node preview/server.mjs",
+    "shoot": "node preview/shoot.mjs"
+  },
+  "dependencies": {
+    "@openchamber/sdk": "2.6.1"
+  },
+  "devDependencies": {
+    "playwright": "1.65.0",
+    "typescript": "^5.9.3"
+  }
+}

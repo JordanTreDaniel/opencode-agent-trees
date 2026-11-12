@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Session Views — preview (mock host)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #070a0e;
+        color: #e6edf3;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 14px;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      .pv-bar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        padding: 7px 12px;
+        background: #10161d;
+        border-bottom: 1px solid #2b3440;
+        font-size: 12px;
+        color: #9aa7b4;
+      }
+      .pv-badge {
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #e3b341;
+        border: 1px solid #9e6a03;
+        background: rgba(158, 106, 3, 0.18);
+        border-radius: 999px;
+        padding: 3px 9px;
+      }
+      .pv-bar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+      #pv-status {
+        margin-left: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #6e7b8a;
+      }
+      #pv-frame {
+        flex: 1;
+        width: 100%;
+        border: 0;
+        background: #0d1117;
+      }
+      #pv-toasts {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 20;
+      }
+      .pv-toast {
+        background: #161b22;
+        border: 1px solid #2b3440;
+        border-left: 3px solid #2f81f7;
+        color: #e6edf3;
+        border-radius: 8px;
+        padding: 9px 12px;
+        font-size: 12.5px;
+        max-width: 340px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+      }
+      .pv-toast-success {
+        border-left-color: #238636;
+      }
+      .pv-toast-error {
+        border-left-color: #da3633;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="pv-bar">
+      <span class="pv-badge">Preview · mock host · fixtures.json</span>
+      <span>Not installed into OpenChamber — this page plays the host side of the guest protocol.</span>
+      <label>
+        <input type="checkbox" id="pv-provenance" checked />
+        supply fixture provenance (fork / scheduled / claimed / pendingForm)
+      </label>
+      <span id="pv-status">booting…</span>
+    </header>
+    <iframe
+      id="pv-frame"
+      class="pv-frame"
+      sandbox="allow-scripts"
+      title="Session Views panel (guest frame)"
+      src="../panel/index.html"
+    ></iframe>
+    <div id="pv-toasts" aria-live="polite"></div>
+    <script src="host.js"></script>
+  </body>
+</html>
