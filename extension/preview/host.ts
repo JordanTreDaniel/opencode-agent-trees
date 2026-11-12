@@ -75,6 +75,23 @@ const statusNode = document.getElementById("pv-status") as HTMLElement;
 const toasts = document.getElementById("pv-toasts") as HTMLElement;
 const provenanceInput = document.getElementById("pv-provenance") as HTMLInputElement;
 
+/**
+ * `?empty=1` — the empty-state proof fixture. It drops every session that would
+ * land in `question-paused` (a live form) or `needs-restart` (a failed outcome
+ * or an execution claim), so both views render their empty state against an
+ * otherwise populated workspace. It changes nothing else: the other four views
+ * keep their rows.
+ */
+const EMPTY = new URLSearchParams(window.location.search).has("empty");
+
+const wouldPause = (session: FixtureSession): boolean =>
+  session.activity === "waiting-question" || session.pendingForm === true;
+const wouldRestart = (session: FixtureSession): boolean =>
+  session.outcome === "failed" || session.claimed === true;
+
+const visibleIn = (session: FixtureSession): boolean =>
+  !(EMPTY && (wouldPause(session) || wouldRestart(session)));
+
 /** The preview's one deliberate lie: supply the provenance fields the real host omits. */
 let provenance = true;
 
@@ -149,7 +166,7 @@ const snapshotFor = (query: { kind: string; projectId?: string }): unknown => {
     projectId,
     state: "ready",
     coverage: project ? data.coverage.filter((entry) => entry.directory === project.directory) : [],
-    sessions: data.sessions.filter((entry) => entry.projectId === projectId).map(toRecord),
+    sessions: data.sessions.filter((entry) => entry.projectId === projectId && visibleIn(entry)).map(toRecord),
   };
 };
 
@@ -248,7 +265,11 @@ provenanceInput.addEventListener("change", () => {
 
 installed = true;
 for (const message of pending.splice(0)) handle(message);
-note("mock host ready — waiting for the panel's hello");
+note(
+  EMPTY
+    ? "mock host ready — ?empty=1: needs-restart + question-paused forced empty"
+    : "mock host ready — waiting for the panel's hello",
+);
 
 // The panel frame loads after this script, so a stray `hello` from a previous
 // navigation is re-answered on frame load.

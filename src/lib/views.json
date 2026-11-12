@@ -62,7 +62,7 @@
     "status": {
       "type": "\"running\" | \"idle\" | \"unknown\" | array of those",
       "derived": "live running set, else host sessions[sid].status, else DB time_idle / idle_outcome",
-      "description": "Run state. running means a turn is in flight or the session holds the execution claim; a paused session still reports running. idle means the session has completed a turn. unknown means neither source carries evidence. archived is a separate filter and is not folded into status."
+      "description": "Run state. running means a turn is in flight or the session holds the execution claim; a paused session still reports running. idle means the session has completed a turn. unknown means neither source carries evidence. archived is a separate filter and is not folded into status. status alone never separates producing from blocked: the named `running` view adds hasPendingForm: false for that (see the running view's note)."
     },
     "hasPendingForm": {
       "type": "boolean",
@@ -128,8 +128,9 @@
       "proxyNote": "Documented proxy: root ∧ ¬fork ∧ metadata.openchamber.kind ≠ 'scheduled'. Upstream exposes no user-spawned flag, so this triple is the closest available approximation of \"a conversation the user started\". A session with no metadata counts as not scheduled, which widens the view rather than hiding rows; a scheduled session that was never labelled is indistinguishable from a user one."
     },
     "running": {
-      "filters": { "status": "running" },
-      "sort": { "field": "lastActivity", "direction": "desc" }
+      "filters": { "status": "running", "hasPendingForm": false },
+      "sort": { "field": "lastActivity", "direction": "desc" },
+      "note": "Actively producing: status = running AND no pending form. running and question-paused are DISJOINT by definition and together partition every row with status = running — a session blocked on a question is counted only in question-paused, never here, because it is not producing work. The status half alone is not enough: a paused session still reports running to the host (see the status filter), so hasPendingForm: false is what makes \"what needs a restart vs what is ACTIVELY RUNNING\" a partition rather than an overlap. Both halves need the live source — status is never inferred running from the database, and a DB-only projection reports hasPendingForm false while setting meta.stale — so with the host unreachable this view is empty rather than wrong."
     },
     "needs-restart": {
       "filters": {
@@ -145,7 +146,7 @@
     "question-paused": {
       "filters": { "status": "running", "hasPendingForm": true },
       "sort": { "field": "lastActivity", "direction": "desc" },
-      "note": "Both filters are required. A paused session reports running and holds the execution claim, so status alone cannot find it. A pending form whose turn has ended (form present, idle_outcome succeeded) does not qualify: it is a stale form, not a pause. This view is the verification surface for pause/resume (src/lib/pause.ts): tree.pause reports `paused` only after a NEW pending form and the execution claim are both observed — i.e. the session matches this view — and tree.resume reports `resumed` only after the form has left the pending set — i.e. the session has left it."
+      "note": "DISJOINT from running: running filters hasPendingForm false, question-paused filters it true, so no session is ever in both and every status = running row is in exactly one of them. Both filters are required here. A paused session reports running and holds the execution claim, so status alone cannot find it. A pending form whose turn has ended (form present, idle_outcome succeeded) does not qualify: it is a stale form, not a pause. This view is the verification surface for pause/resume (src/lib/pause.ts): tree.pause reports `paused` only after a NEW pending form and the execution claim are both observed — i.e. the session matches this view — and tree.resume reports `resumed` only after the form has left the pending set — i.e. the session has left it."
     },
     "tree": {
       "filters": { "rootId": "$root" },

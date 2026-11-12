@@ -24,10 +24,10 @@ const ALL_TABS: TabId[] = [...BASE_TABS, "tree", "subtree"];
 
 const VIEW_NOTES: Record<string, { text: string; tone?: "warning" }> = {
   running: {
-    text: "status = running means a turn is in flight or the session holds the execution claim. Question-paused sessions are a SUBSET — they still report running, which is exactly why question-paused needs hasPendingForm as a second filter.",
+    text: "status = running ∧ ¬hasPendingForm means ACTIVELY producing. A question-paused session still reports running to the host, but it is counted only in question-paused — the two views are disjoint and together cover every running row.",
   },
   "question-paused": {
-    text: "Verification surface for pause/resume: pause reports `paused` only after a NEW pending form and the execution claim are both observed (the session matches this view); resume reports `resumed` only after the form has left the pending set (the session has left it).",
+    text: "DISJOINT from running — running filters ¬hasPendingForm, this view filters it true, so no session is in both and every status = running row is in exactly one. Verification surface for pause/resume: pause reports `paused` only after a NEW pending form and the execution claim are both observed (the session matches this view); resume reports `resumed` only after the form has left the pending set (the session has left it).",
   },
   tree: {
     text: "Every session in one tree, ordered by DERIVED depth — the host exposes no depth, so the panel walks parentId itself.",
@@ -523,6 +523,12 @@ function emptyStateFor(viewName: string, data: WorkspaceData): HTMLElement {
     return emptyState(
       "No recorded failures — and the orphan arm is unknown",
       "outcome has no failed/interrupted row, but claimed-but-idle sessions cannot be read from this host. Treat this as “no evidence”, not “zero restart candidates”.",
+    );
+  }
+  if (viewName === "needs-restart") {
+    return emptyState(
+      "No restart candidates",
+      "No recorded failed or interrupted outcome and no orphaned execution claim — nothing needs a restart.",
     );
   }
   if (viewName.startsWith("tree:") || viewName.startsWith("subtree:")) {

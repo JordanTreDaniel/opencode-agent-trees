@@ -397,6 +397,49 @@ test("every declared filter is actually implemented", async () => {
   }
 })
 
+test("running and question-paused are disjoint and partition every status = running row", async () => {
+  const fixture = writeSessionDb(TREE)
+  try {
+    // Exactly the shape the requirement targets: running sessions, one of which
+    // is blocked on a question.
+    const live = makeLive({
+      running: ["ses_root", "ses_a", "ses_a1"],
+      hostStatus: { ses_root: "busy", ses_a: "busy", ses_a1: "busy", ses_b: "idle" },
+      pendingForms: { ses_a: 1 },
+    })
+    const projection = await projectStatus({ dbPath: fixture.path, live })
+
+    // The definitions themselves, straight from the SSOT both the CLI and the
+    // extension panel import.
+    const definition = loadViewsDefinition()
+    assert.deepEqual(definition.views.running!.filters, { status: "running", hasPendingForm: false })
+    assert.deepEqual(definition.views["question-paused"]!.filters, { status: "running", hasPendingForm: true })
+
+    const allRunning = projection.sessions
+      .filter((session) => session.status === "running")
+      .map((session) => session.id)
+      .sort()
+    assert.deepEqual(allRunning, ["ses_a", "ses_a1", "ses_root"])
+
+    const running = projection.views.running!
+    const paused = projection.views["question-paused"]!
+    assert.deepEqual([...running.ids].sort(), ["ses_a1", "ses_root"], "the session blocked on a question is not actively running")
+    assert.deepEqual([...paused.ids], ["ses_a"])
+
+    const overlap = running.ids.filter((id) => paused.ids.includes(id))
+    assert.deepEqual(overlap, [], "running and question-paused share no session")
+    assert.equal(
+      running.count + paused.count,
+      allRunning.length,
+      "sum of the two counts == count of all status = running rows",
+    )
+    const union = [...new Set([...running.ids, ...paused.ids])].sort()
+    assert.deepEqual(union, allRunning, "every running row is in exactly one of the two views")
+  } finally {
+    fixture.cleanup()
+  }
+})
+
 test("view names resolve without the engine inventing a filter set", () => {
   const views = loadViewsDefinition()
   assert.deepEqual(Object.keys(views.views).sort(), [
