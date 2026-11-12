@@ -194,6 +194,7 @@ No implementation is approved, no dashboard code ships here, and `sidebar-view.m
 
 ## Known limitations
 
+- **Session origin cannot be determined.** OpenCode records no column, field, hook, or event that says who or what created a session, so `userSpawned` has no source and `default` is a **labelled proxy** for "conversations you started" rather than the thing itself. The full `metadata.openchamber.*` inventory, the writer for each key, and the source citations behind this limitation are in [`docs/opencode-session-metadata.md`](./docs/opencode-session-metadata.md).
 - Journal entries are JSON values in OpenCode plugin storage, not SQLite session history. There is no compare-and-swap primitive in the documented storage interface; appends from separate server processes are not guaranteed atomic.
 - `tree_family` uses a bounded walk (default 200 nodes, maximum 2,000). A large family may be truncated; the response marks that condition.
 - Parent links to missing/deleted sessions terminate the upward walk at the missing ID. Corrupt cycles are detected and bounded.

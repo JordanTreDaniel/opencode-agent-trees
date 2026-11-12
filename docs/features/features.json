@@ -3020,5 +3020,104 @@
       ],
       "skillDocRef": "README.md#recursive-recovery"
     }
+  },
+  {
+    "id": "F-37",
+    "title": "Session origin is not identifiable",
+    "status": "not-implemented",
+    "lifecycle": "accepted",
+    "story": "I can tell what created a session, so I can separate conversations I started from ones a CLI, script, SDK call, or agent subsession started.",
+    "jobStory": "When I am triaging the session list, I want to know which sessions a human started, so I can tell them apart from automated runs.",
+    "validation": {
+      "scenarios": [
+        {
+          "id": "F-37-V1",
+          "name": "A CLI-created session says so",
+          "given": "A root session created by `opencode run`.",
+          "when": "The session record is read through the V2 API.",
+          "then": "The record exposes an origin field naming the creating client, so it is distinguishable from a session the user opened in the UI."
+        },
+        {
+          "id": "F-37-V2",
+          "name": "An agent subsession does not inherit a false origin",
+          "given": "An agent subsession created under a host session that carries an origin label.",
+          "when": "The child's metadata is read.",
+          "then": "The child reports its own creation path rather than reusing the host's, because inherited metadata is not treated as provenance."
+        },
+        {
+          "id": "F-37-V3",
+          "name": "The default view stops being a proxy",
+          "given": "A database holding a mix of UI-started, CLI-started, and scheduled roots.",
+          "when": "The `default` view is computed.",
+          "then": "It filters on the recorded origin instead of `isRoot AND NOT fork AND kind != scheduled`, so unlabelled CLI roots no longer appear as user conversations."
+        }
+      ],
+      "invalidation": [
+        "OpenCode ships an origin or created_by field on session_v2 or Session.Info and the `default` view still cannot distinguish a CLI-created root from a user-created one.",
+        "A session created by `opencode run` and a session created in the UI return identical records with no way to tell them apart.",
+        "A child session created by an agent tool reports the flow label of its host as its own origin."
+      ]
+    },
+    "criteria": {
+      "items": [
+        {
+          "id": "PC-F-37-01",
+          "slug": "f-37-origin-field-present",
+          "description": "The session record exposes a field identifying who or what created the session, and that field is readable without inferring it from parent, fork, or scheduled filters.",
+          "method": "manual",
+          "expected_values": {
+            "origin_field_present_on_session_info": "true",
+            "opencode_run_root_distinguishable_from_ui_root": "true",
+            "inherited_metadata_counted_as_origin": "false"
+          },
+          "evidence": "packages/core/src/session/sql.ts:22-68 defines every session_v2 column and none of them is source/origin/created_by/actor/via/channel/client; packages/schema/src/session.ts:32-60 defines Session.Info with no source field; packages/protocol/src/groups/session.ts:156-166 accepts only id/parentID/title/agent/model/location/metadata/permissions on create. Confirmed by a live PRAGMA table_info(session_v2) against the 2026-11-12 snapshot database, which returns that same column list.",
+          "status": "not-run"
+        }
+      ],
+      "linkage": "These are feature-level criteria, not engine-native ProofCriteria. The review-dash engine is keyed by Notion task-page ID (task_id), not feature ID; when engine proof is needed, reference the engine-native criteria file by path or attach its task page ID here. Unknown feature fields are stripped by the engine.",
+      "engineRef": {
+        "taskId": null,
+        "criteriaPath": null
+      }
+    },
+    "routine": {
+      "id": null,
+      "ref": null,
+      "reason": "No routine can exist while there is no origin field to read. The nearest stand-in is the documented proxy filter behind the `default` view, which this record exists to replace.",
+      "trigger": null,
+      "inputs": [],
+      "steps": []
+    },
+    "skillDoc": {
+      "ref": "docs/opencode-session-metadata.md",
+      "status": "present",
+      "reason": "docs/opencode-session-metadata.md inventories every metadata.openchamber.* key with its writer and live count, then explains with source citations why no column, field, hook, or event records session origin."
+    },
+    "provenance": {
+      "messageId": "opencode-src/packages/core/src/session/sql.ts:22-68",
+      "quote": "Session origin is not identifiable in OpenCode. There is no column, no field, no hook, and no event that records who or what created a session.",
+      "confidence": "spec-derived"
+    },
+    "ambiguities": [
+      "Should origin be a first-class column on session_v2, or a reserved metadata.openchamber key that the CLI and SDK are required to write?",
+      "When a child inherits its parent's metadata, should the child's origin be re-stamped at creation, or should readers be expected to walk parentID to find it?",
+      "If the `default` view switches to a real origin field, what happens to sessions written before the field existed?"
+    ],
+    "notes": [
+      "Provenance caveat: spec-derived. The quote is synthesized from the cited OpenCode v2.1.2 source, not a user quote.",
+      "Verified against the v2.1.2 source at ~/dev/opencode-src/packages/ on 2026-11-11: no origin column on session_v2, no source field on Session.Info, no session.create plugin hook (the whole session hook surface is prompt, context, compaction, generate, title, model.request, http.request, http.response, experimental.ws.*, retry at packages/plugin/src/effect/session.ts:139-151), and the session.created event carries metadata but no origin field (packages/schema/src/session-event.ts:48-66, metadata at :62).",
+      "Metadata is inherited by children and forks (packages/schema/src/session-metadata.ts:3-6), so an agent subsession reports its host's flow label rather than its own origin.",
+      "`opencode run` writes no metadata (packages/cli/src/session-target.ts:60-68) and OpenChamber's default create writes none (ui/src/sync/session-actions.ts:1084-1088), so unlabelled roots are indistinguishable from user-started ones.",
+      "Consequence: userSpawned has no source and is reported unavailable, so the `default` view is a labelled proxy rather than the field itself.",
+      "Upstream in anomalyco/opencode: issue #40384 OPEN with a maintainer reply on 2026-10-28 pointing at packages/cli/src/session-target.ts; PR #48059 CLOSED unmerged; PR #47486 CLOSED unmerged; issue #53779 OPEN."
+    ],
+    "links": {
+      "storyId": "US-037",
+      "routineId": null,
+      "proofIds": [
+        "PC-F-37-01"
+      ],
+      "skillDocRef": "docs/opencode-session-metadata.md"
+    }
   }
 ]
