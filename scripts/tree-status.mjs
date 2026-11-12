@@ -113,6 +113,7 @@ function marks(session) {
   if (session.scheduled) out.push("scheduled")
   if (session.fork) out.push("fork")
   if (session.claimed) out.push("claimed")
+  if (session.orphaned === true) out.push("orphaned")
   if (session.archived) out.push("archived")
   if (session.outcome) out.push(session.outcome)
   return out.join(",")

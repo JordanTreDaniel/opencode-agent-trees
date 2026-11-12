@@ -51,6 +51,8 @@ export interface ViewDefinition {
 export interface ViewsDefinition {
   version: number
   sources?: Record<string, string>
+  /** Engine-interpreted operators available inside a view's filter set. */
+  operators?: Record<string, string>
   sort: { default: SortDefinition; tiebreak: SortDefinition; fields?: Record<string, string> }
   filters: Record<string, FilterDefinition>
   views: Record<string, ViewDefinition>
@@ -77,6 +79,21 @@ export function unavailableFilters(views: ViewsDefinition): Record<string, { una
     if (definition.unavailable) out[name] = { unavailable: true, reason: definition.reason ?? "no source" }
   }
   return out
+}
+
+/** Does any named view filter on `name`, at the top level or inside a `$any` group? */
+function viewUsesFilter(views: ViewsDefinition, name: string): boolean {
+  const references = (filters: Record<string, unknown>): boolean =>
+    Object.entries(filters).some(([key, value]) => {
+      if (key === name) return true
+      if (key === "$any" && Array.isArray(value)) {
+        return value.some(
+          (group) => !!group && typeof group === "object" && !Array.isArray(group) && references(group as Record<string, unknown>),
+        )
+      }
+      return false
+    })
+  return Object.values(views.views).some((definition) => references(definition.filters))
 }
 
 // ---------------------------------------------------------------------------
@@ -472,6 +489,17 @@ export interface ProjectedSession extends SessionRow {
    * a turn starts, which is why a paused session still reports it.
    */
   claimed: boolean
+  /**
+   * `orphaned = claimed ∧ ¬running` — the row holds an execution claim but the
+   * host's active set (`GET /api/session/active`) does not list it. That is an
+   * orphaned claim: core never auto-resumes it, so `needs-restart` must surface
+   * it. Tri-state on purpose:
+   *   - `true`  claimed and absent from the active set (host was read);
+   *   - `false` no claim (a DB-only fact), or the host lists the session;
+   *   - `null`  claimed but the host was not read, so `running` is unknown.
+   * Unknown is never collapsed to `false`; the projection warns instead.
+   */
+  orphaned: boolean | null
   fork: boolean
   scheduled: boolean
   hasPendingForm: boolean
@@ -570,6 +598,10 @@ function projectSession(row: SessionRow, graph: Graph, live: LiveState | null): 
 
   const kind = ((row.metadata?.openchamber ?? {}) as { kind?: unknown }).kind
   const lastActivity = Math.max(row.timeUpdated ?? 0, row.timeIdle ?? 0) || null
+  const claimed = row.timeSuspended !== null
+  // orphaned = claimed ∧ ¬running. Without the live source `running` is
+  // unknown, so a claimed row reports null (unknown) — never false.
+  const orphaned = !claimed ? false : live ? !live.running.has(row.id) : null
 
   return {
     ...row,
@@ -582,7 +614,8 @@ function projectSession(row: SessionRow, graph: Graph, live: LiveState | null): 
     isLeaf: childCount === 0,
     status,
     archived,
-    claimed: row.timeSuspended !== null,
+    claimed,
+    orphaned,
     fork: row.forkSessionId !== null,
     scheduled: kind === "scheduled",
     hasPendingForm: pendingFormCount > 0,
@@ -648,6 +681,17 @@ interface FilterContext {
 
 function matches(session: ProjectedSession, filters: Record<string, unknown>, context: FilterContext): boolean {
   for (const [name, expected] of Object.entries(filters)) {
+    if (name === "$any") {
+      // Disjunction: the session matches when ANY sub-filter set matches. The
+      // named views stay declarative in views.json; nothing is hardcoded here.
+      if (!Array.isArray(expected) || expected.length === 0) throw new Error("$any expects a non-empty array of filter sets")
+      const matchesAny = expected.some((group) => {
+        if (!group || typeof group !== "object" || Array.isArray(group)) throw new Error("$any expects an array of filter sets")
+        return matches(session, group as Record<string, unknown>, context)
+      })
+      if (!matchesAny) return false
+      continue
+    }
     const definition = context.views.filters[name]
     if (!definition) throw new Error(`unknown filter: ${name}`)
     if (definition.unavailable) {
@@ -693,6 +737,12 @@ function matches(session: ProjectedSession, filters: Record<string, unknown>, co
         break
       case "claimed":
         if (session.claimed !== Boolean(expected)) return false
+        break
+      case "orphaned":
+        // Tri-state: `null` (host not read) satisfies neither true nor false,
+        // so an unknown orphan can never be reported as a non-orphan — and
+        // never as one either: the projection warns when this arm is unevaluable.
+        if (session.orphaned !== Boolean(expected)) return false
         break
       case "project":
         if (session.projectId !== String(expected)) return false
@@ -879,6 +929,17 @@ export async function projectStatus(input: ProjectStatusInput = {}): Promise<Sta
           warnings.push(`host live state unavailable (${reason}); status is DB-derived only and pending forms are unknown`)
         }
       }
+    }
+
+    // Orphan detection needs the host's active set. Without it a claimed row's
+    // `orphaned` is unknown, so say so instead of letting the orphan arm of
+    // needs-restart silently report zero.
+    if (!live && viewUsesFilter(views, "orphaned")) {
+      stale = true
+      warnings.push(
+        "orphan detection unavailable: the host live state was not read, so claimed sessions cannot be checked against the active set; " +
+          "orphaned is unknown (never false) and only recorded outcomes are matched",
+      )
     }
 
     const sessions = opened.inventory.rows.map((row) => projectSession(row, graph, live))

@@ -134,7 +134,7 @@ node scripts/tree-status.mjs [--view <name>] [--root <id>] [--subtree <id>] \
 |---|---|---|
 | `default` | `isRoot ∧ ¬fork ∧ ¬scheduled` | Conversations you started. **This is a proxy** — see below. |
 | `running` | `status = running` | Sessions with a turn in flight or holding the execution claim. |
-| `needs-restart` | `status ∈ {idle, unknown} ∧ ¬archived ∧ outcome ∈ {failed, interrupted}` | Restart candidates: recorded failures that are not running. A session with no recorded outcome is never listed. |
+| `needs-restart` | `¬archived ∧ (outcome ∈ {failed, interrupted} ∨ orphaned)` | Restart candidates: recorded failures **plus orphaned claims** — rows that hold an execution claim but are absent from the host's active set. A session with no recorded outcome is never listed through the outcome arm; the orphan arm needs the host (see [Degradation](#data-sources-and-honesty-rules)). |
 | `question-paused` | `status = running ∧ hasPendingForm` | Sessions genuinely waiting on a question. |
 | `tree:<rootId>` | `rootId = <id>` | Every session in one tree, including the root (also `--root <id>`). |
 | `subtree:<id>` | `isSubtreeOf <id>` | One session and everything beneath it, self-inclusive (also `--subtree <id>`). |
@@ -142,6 +142,8 @@ node scripts/tree-status.mjs [--view <name>] [--root <id>] [--subtree <id>] \
 `default` is a **documented proxy, not a field**. Upstream exposes no user-spawned flag, so `isRoot ∧ ¬fork ∧ metadata.openchamber.kind ≠ 'scheduled'` is the closest available approximation of "a conversation the user started". A session with no metadata counts as not scheduled, which widens the view instead of hiding rows; a scheduled session that was never labelled is indistinguishable from a user one.
 
 `question-paused` requires **both** halves on purpose. A paused session still reports `busy` and holds the execution claim, so status alone cannot find it; and a form can outlive its turn, so a pending form alone is not proof of a pause. A pending form with no running turn is a stale form and does not qualify.
+
+`needs-restart` is a disjunction on purpose (`$any` in [`views.json`](./src/lib/views.json)): the outcome arm (`outcome ∈ {failed, interrupted}`) finds recorded failures from the database alone, and the orphan arm (`orphaned = true`) finds execution claims the host no longer lists — the case core never auto-resumes, which a status filter alone would miss because the host can still report such a row as running. An unclaimed session is knowably not orphaned from the database alone; a **claimed** session without the host is `orphaned: null` (unknown), so the projection sets `meta.stale: true` and warns that orphan detection is unavailable instead of silently listing zero.
 
 ### Filter vocabulary
 
@@ -158,6 +160,7 @@ node scripts/tree-status.mjs [--view <name>] [--root <id>] [--subtree <id>] \
 | `hasPendingForm` | boolean | `pending[sid].forms` non-empty on the host |
 | `archived` | boolean | `time_archived` present |
 | `claimed` | boolean | `time_suspended` present — the marker `SessionStore.claim` writes at turn start |
+| `orphaned` | `true` \| `false` \| `null` | `claimed ∧ ¬running` — the row holds a claim but the host's active set (`GET /api/session/active`) does not list it. `null` (unknown) when the host was not read; never reported as `false` |
 | `project` | string | `session_v2.project_id` |
 | `outcome` | `succeeded` \| `failed` \| `interrupted` \| `none` | `session_v2.idle_outcome` |
 | `fork` | boolean | `fork_session_id` present |
@@ -177,7 +180,7 @@ Two filters have **no source** and are reported under `meta.unavailable` with th
 
 - **Inventory** — `session_v2`, paged newest-first with a default cap of 2000 (`--all` pages everything). Child counts and ancestor chains come from the whole table, so `depth`, `rootId` and `isLeaf` stay correct even when the page is capped, and `meta.truncated` says the page was capped.
 - **Live overlay** — `/api/session/active` (running ids) and `/api/sessions/status` (per-session status and `pending[sid].forms[]`). `/api/form` is directory-scoped and is deliberately **not** used.
-- **Degradation** — when the host is unreachable the projection still returns database rows, sets `meta.stale: true`, and warns that pending forms are unknown. It never reports "no pending forms" as a fact it did not observe.
+- **Degradation** — when the host is unreachable the projection still returns database rows, sets `meta.stale: true`, and warns that pending forms are unknown **and that orphan detection is unavailable** (`orphaned` stays `null`, never `false`). It never reports "no pending forms" or "no orphaned claims" as facts it did not observe.
 - **Auth** — the CLI reads the host runfile (`~/.config/openchamber/run/openchamber-<port>.json`) in process, sends that password only to a loopback host, and never prints it or puts it in argv.
 ## Dashboard (design only — not implemented)
 
@@ -199,7 +202,7 @@ No implementation is approved, no dashboard code ships here, and `sidebar-view.m
 - The child tool name and child-ID payload are implementation details, not a stable public API. Hook matching is intentionally defensive; check logs after OpenCode upgrades.
 - Model and agent fields reflect the session metadata OpenCode returns; this plugin does not pin or change child models.
 - `tree_status` reads a capped inventory by default (2000 rows, newest first) and says so with `meta.truncated`; pass `--all` or a larger `limit` when a view must be exhaustive. Child counts and ancestor chains are read from the whole table, so `depth`, `rootId` and `isLeaf` are correct even when the page is capped.
-- `tree_status` needs the host for run state and pending forms. Without it the projection is database-only, sets `meta.stale: true`, and reports pending forms as unknown rather than absent. `userSpawned` and `waveIndex` have no source at all and are reported as unavailable.
+- `tree_status` needs the host for run state, pending forms, and orphan detection. Without it the projection is database-only, sets `meta.stale: true`, reports pending forms as unknown rather than absent, and leaves `orphaned` as `null` with an explicit "orphan detection unavailable" warning — the orphan arm of `needs-restart` contributes nothing until the host is reachable, while recorded failures still list from the database. `userSpawned` and `waveIndex` have no source at all and are reported as unavailable.
 - Initial live integration failed with `Tool result declared output without an output schema`. The V2 runtime's execution branch rejects a returned object that owns `output` when the tool has no output schema; the earlier content-only adapter did not explain why that live path observed `output`. All registered tools declare the V2 object output schema and return structured `output` plus readable `content`. Post-change calls in the already-loaded shared service still returned the same error, and its catalog still advertises the old handoff description; the source fix is not live-verified because the shared service was not restarted or reloaded.
 - The shared database already contained one historical failed `opencode-go/deepseek-v4.1-flash` child (`Go usage limit exceeded`). It predates this plugin installation, so it did not produce a plugin hook journal entry. A separate free-tier failure was captured by the live `subagent` hook, but its child ID was only embedded in the error text; the current source now extracts IDs from that text, and this adjusted hook behavior has not yet been re-triggered live.
 

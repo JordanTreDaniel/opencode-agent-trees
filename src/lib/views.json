@@ -6,6 +6,9 @@
     "live": "Host endpoints /api/session/active (running ids) and /api/sessions/status (per-session status + pending[sid].forms). The host is the only cross-project source of pending forms.",
     "notARecord": "Optional fields are omitted when unset. An absent field means null, never \"unknown\"."
   },
+  "operators": {
+    "$any": "Disjunction inside a view's filter set: a non-empty array of sub-filter sets; the session matches when ANY sub-set matches. Every other key in a filter set is conjoined. Used by needs-restart to combine the outcome arm with the orphan arm."
+  },
   "sort": {
     "default": { "field": "lastActivity", "direction": "desc" },
     "tiebreak": { "field": "id", "direction": "asc" },
@@ -74,7 +77,12 @@
     "claimed": {
       "type": "boolean",
       "derived": "time_suspended !== null",
-      "description": "Holds an execution claim. SessionStore.claim sets time_suspended when a turn starts, so a paused session reports claimed even though its status is running. claimed true with status idle is a claim left behind by a turn that is no longer live — the orphan case that core never auto-resumes (see F-36)."
+      "description": "Holds an execution claim. SessionStore.claim sets time_suspended when a turn starts, so a paused session reports claimed even though its status is running. claimed true with status idle is a claim left behind by a turn that is no longer live — the orphan case that core never auto-resumes (see F-36). See `orphaned` for the derived form needs-restart's orphan arm uses."
+    },
+    "orphaned": {
+      "type": "boolean (tri-state: true | false | null)",
+      "derived": "claimed ∧ ¬running, where running means the session appears in the host's GET /api/session/active set",
+      "description": "True when a row holds an execution claim but the host does not list it as active — an orphaned claim that core never auto-resumes. false when the row holds no claim (knowable from the database alone) or the host lists the session. null when the row is claimed but the host was not read: unknown is never reported as false, and the projection sets meta.stale plus an orphan-detection warning instead of listing zero. Requires the live source."
     },
     "project": {
       "type": "string",
@@ -124,9 +132,15 @@
       "sort": { "field": "lastActivity", "direction": "desc" }
     },
     "needs-restart": {
-      "filters": { "status": ["idle", "unknown"], "archived": false, "outcome": ["failed", "interrupted"] },
+      "filters": {
+        "archived": false,
+        "$any": [
+          { "outcome": ["failed", "interrupted"] },
+          { "orphaned": true }
+        ]
+      },
       "sort": { "field": "lastActivity", "direction": "desc" },
-      "note": "Restart candidates are sessions that recorded a failed or interrupted outcome and are not currently running. A session with no recorded idle_outcome is never listed: absence of an outcome is not a failure. Stale-form and paused sessions are excluded by the status filter, not by guessing."
+      "note": "Restart candidates are non-archived sessions that either recorded a failed or interrupted outcome, or hold an orphaned claim (claimed but absent from the host's active set). A session with no recorded idle_outcome is never listed through the outcome arm: absence of an outcome is not a failure. When the host is unreachable the orphan arm cannot be evaluated — orphaned is unknown, meta.stale is true, and the projection warns that orphan detection is unavailable rather than reporting zero."
     },
     "question-paused": {
       "filters": { "status": "running", "hasPendingForm": true },

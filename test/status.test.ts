@@ -251,6 +251,74 @@ test("needs-restart lists recorded failures that are not running, and never the 
   }
 })
 
+test("needs-restart includes an orphaned claim and excludes a claimed session the host still lists", async () => {
+  const fixture = writeSessionDb([
+    // (a) recorded failure, no claim: the outcome arm.
+    { id: "ses_failed", created: 1, updated: 10, idle: 11, outcome: "failed" },
+    // (b) claimed but absent from the host's active set: the orphan arm. Its
+    // outcome succeeded, so ONLY the orphan arm can surface it.
+    { id: "ses_orphan", parent: "ses_root", created: 2, updated: 20, suspended: 21, outcome: "succeeded" },
+    // (c) claimed AND listed as active by the host: not orphaned, and its
+    // outcome succeeded, so it must not appear at all.
+    { id: "ses_claimed_active", created: 3, updated: 30, suspended: 31, outcome: "succeeded" },
+    { id: "ses_root", created: 0, updated: 0 },
+  ])
+  try {
+    const projection = await projectStatus({
+      dbPath: fixture.path,
+      live: makeLive({
+        running: ["ses_claimed_active"],
+        hostStatus: { ses_failed: "idle", ses_orphan: "idle", ses_claimed_active: "busy" },
+      }),
+    })
+
+    const ids = projection.views["needs-restart"]!.ids
+    assert.deepEqual([...ids].sort(), ["ses_failed", "ses_orphan"], "(a) failed-idle and (b) claimed-but-inactive appear")
+    assert.equal(ids.includes("ses_claimed_active"), false, "(c) a claimed session still active is not a restart candidate")
+    assert.equal(projection.meta.stale, false, "the host was read, so orphan detection is current")
+
+    assert.equal(byId(projection.sessions, "ses_orphan").orphaned, true)
+    assert.equal(byId(projection.sessions, "ses_claimed_active").orphaned, false)
+    assert.equal(byId(projection.sessions, "ses_failed").orphaned, false, "no claim is knowably not-orphaned")
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test("host off: orphaned is unknown with a stale warning, not a silent false negative", async () => {
+  const fixture = writeSessionDb([
+    { id: "ses_failed", created: 1, updated: 10, idle: 11, outcome: "failed" },
+    // Claimed with a succeeded outcome: only the orphan arm could list it, and
+    // without the host that arm is unevaluable.
+    { id: "ses_claimed", created: 2, updated: 20, suspended: 21, outcome: "succeeded" },
+    // Claimed AND failed: the outcome arm still works from DB evidence alone.
+    { id: "ses_claimed_failed", created: 3, updated: 30, suspended: 31, outcome: "failed" },
+  ])
+  try {
+    const projection = await projectStatus({ dbPath: fixture.path, host: false })
+
+    assert.equal(projection.meta.stale, true, "the host was not read")
+    assert.match(projection.meta.warnings.join("\n"), /orphan detection unavailable/i)
+
+    const claimed = byId(projection.sessions, "ses_claimed")
+    assert.equal(claimed.orphaned, null, "unknown is reported as null, never false")
+
+    // Not a false negative: recorded failures (claimed or not) still list, and
+    // the view says why the orphan arm contributed nothing.
+    assert.deepEqual([...projection.views["needs-restart"]!.ids].sort(), ["ses_claimed_failed", "ses_failed"])
+
+    // An `orphaned: false` filter must not treat unknown as false either.
+    const views = loadViewsDefinition()
+    const custom = structuredClone(views)
+    custom.views.running = { filters: { orphaned: false }, sort: { field: "lastActivity", direction: "desc" } }
+    const notOrphan = await projectStatus({ dbPath: fixture.path, host: false, views: custom })
+    assert.deepEqual(notOrphan.views.running!.ids, ["ses_failed"], "unclaimed rows are knowably not orphaned")
+    assert.equal(notOrphan.views.running!.ids.includes("ses_claimed"), false, "unknown satisfies neither true nor false")
+  } finally {
+    fixture.cleanup()
+  }
+})
+
 test("the default view is a documented proxy, not a user-spawned field", async () => {
   const fixture = writeSessionDb([
     ...TREE,
