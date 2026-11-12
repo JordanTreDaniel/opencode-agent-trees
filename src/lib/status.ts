@@ -335,6 +335,37 @@ async function openSqliteInventory(
 }
 
 // ---------------------------------------------------------------------------
+// Single-row lookup
+// ---------------------------------------------------------------------------
+
+/**
+ * Read one session row straight from the session database.
+ *
+ * Used by pause verification: the execution claim (`time_suspended`) is a
+ * database fact, so a caller that must prove a turn is actually held reads it
+ * here instead of inferring it from the host's status string. Returns `null`
+ * when the row does not exist; throws when the database or `node:sqlite` is
+ * unreadable, so "unknown" never collapses into "no claim".
+ */
+export async function readSessionRow(dbPath: string, id: string): Promise<SessionRow | null> {
+  const Ctor = await getDatabaseCtor()
+  if (!Ctor) throw new Error("node:sqlite is unavailable in this Node runtime (Node 22+ required)")
+  const db = new Ctor(dbPath, { readOnly: true })
+  try {
+    const [record] = db
+      .prepare(
+        `SELECT id, parent_id, project_id, fork_session_id, title, agent, model, idle_outcome,
+                time_created, time_updated, time_idle, time_archived, time_suspended, metadata
+           FROM session_v2 WHERE id = ?`,
+      )
+      .all(id)
+    return record ? rowFromSqlite(record) : null
+  } finally {
+    db.close()
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Live state from the host
 // ---------------------------------------------------------------------------
 
@@ -394,14 +425,33 @@ function cookieHeaderFrom(response: FetchResponseLike): string | null {
   return single ? single.split(";")[0]! : null
 }
 
+/** An HTTP failure from the host, carrying the path and status for callers that must branch on them. */
+export class HostRequestError extends Error {
+  readonly path: string
+  readonly status: number
+  constructor(path: string, status: number) {
+    super(`${path} returned HTTP ${status}`)
+    this.name = "HostRequestError"
+    this.path = path
+    this.status = status
+  }
+}
+
+export interface HostClient {
+  host: string
+  get<T = unknown>(path: string): Promise<T>
+  /** POST JSON; a 2xx with an empty body resolves to `undefined` (the form reply endpoint returns 204). */
+  post<T = unknown>(path: string, body: unknown): Promise<T>
+}
+
 /**
- * Read the running set and the pending-form set from the host.
+ * Authenticated client for the host's HTTP API.
  *
  * Auth is resolved in this order: explicit cookie, explicit password, runfile
  * for the host's port. The runfile password is sent only to a loopback host and
  * is never placed in argv or in any message this module returns.
  */
-export async function loadLiveState(options: LiveOptions = {}): Promise<LiveState> {
+export async function createHostClient(options: LiveOptions = {}): Promise<HostClient> {
   const host = (options.host ?? process.env.OPENCHAMBER_HOST ?? DEFAULT_HOST).replace(/\/+$/, "")
   const fetchImpl = (options.fetchImpl ?? (globalThis.fetch as unknown as FetchLike))
   if (typeof fetchImpl !== "function") throw new Error("fetch is unavailable")
@@ -432,14 +482,43 @@ export async function loadLiveState(options: LiveOptions = {}): Promise<LiveStat
     }
   }
 
-  const get = async (path: string): Promise<unknown> => {
+  const request = async <T>(path: string, init?: { method?: string; body?: string; headers?: Record<string, string> }): Promise<T> => {
     const response = await fetchImpl(`${host}${path}`, {
-      ...(cookie ? { headers: { cookie } } : {}),
+      ...(init?.method ? { method: init.method } : {}),
+      headers: { ...(cookie ? { cookie } : {}), ...(init?.headers ?? {}) },
+      ...(init?.body !== undefined ? { body: init.body } : {}),
       ...(timeoutMs ? { signal: signal() } : {}),
     })
-    if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`)
-    return response.json()
+    if (!response.ok) throw new HostRequestError(path, response.status)
+    try {
+      return (await response.json()) as T
+    } catch {
+      // 2xx with no JSON body (e.g. the form reply endpoint's 204).
+      return undefined as T
+    }
   }
+
+  return {
+    host,
+    get: (path) => request(path),
+    post: (path, body) =>
+      request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+  }
+}
+
+/**
+ * Read the running set and the pending-form set from the host.
+ *
+ * Auth is resolved by {@link createHostClient}: explicit cookie, explicit
+ * password, then the runfile for the host's port.
+ */
+export async function loadLiveState(options: LiveOptions = {}): Promise<LiveState> {
+  const client = await createHostClient(options)
+  const get = <T>(path: string): Promise<T> => client.get<T>(path)
 
   const active = (await get("/api/session/active")) as { data?: Record<string, { type?: string }> }
   const status = (await get("/api/sessions/status")) as {

@@ -8,6 +8,7 @@ import { appendEntry, readJournal, type StorageLike } from "./lib/journal.ts"
 import { buildFamily, describeSelf, loadAncestors, modelLabel, type SessionLike } from "./lib/family.ts"
 import { formatHandoff, outcomeWord } from "./lib/handoff.ts"
 import { recoverSessions, type RecoverSession, type RecoveryListInput, type RecoveryPrompt } from "./lib/recover.ts"
+import type { PauseResult, ResumeResult } from "./lib/pause.ts"
 import type { ProjectStatusInput, StatusProjection } from "./lib/status.ts"
 
 export interface TreeToolDeps {
@@ -21,6 +22,10 @@ export interface TreeToolDeps {
   listSessions?(input: RecoveryListInput): Promise<{ data: readonly RecoverSession[]; cursor?: { next?: string } }>
   /** Status/views projection. Supplied by the plugin entrypoint, which owns the DB path and host. */
   status?(input: ProjectStatusInput): Promise<StatusProjection>
+  /** Pause one session (prompt injection + verification). Supplied by the plugin entrypoint. */
+  pause?(input: { sessionId: string; question: string; defaultAnswer?: string | null; timeoutMs?: number; treeRoot?: string | null }): Promise<PauseResult>
+  /** Reply to a paused form and verify the session leaves question-paused. */
+  resume?(input: { sessionId: string; formId: string; answer: string }): Promise<ResumeResult>
   sleep?(ms: number): Promise<void>
   now?(): number
 }
@@ -383,10 +388,81 @@ export function createTreeTools(deps: TreeToolDeps): Record<string, TreeTool> {
     },
   }
 
-  return { whoami, family, journal, handoff, wake, recover, status }
+  const pause: TreeTool = {
+    name: "pause",
+    description:
+      "Pause another session. Pause is PROMPT INJECTION, not an API: it sends the target a prompt instructing the `question` " +
+      "tool, then polls the host until a NEW pending form AND the execution claim are both observed before reporting `paused`. " +
+      "`ignored` means the model did not call the question tool — a prompt was delivered, nothing was held. sessionID is " +
+      "required (a session cannot pause its own in-flight turn). The verified pause is recorded under the data dir's " +
+      "pauses/<sessionID>.json so tree.resume can find it after an engine restart.",
+    input: {
+      type: "object",
+      properties: {
+        sessionID: { type: "string", description: "Session to pause. Required." },
+        question: { type: "string", description: "The one question the paused session must ask through the question tool." },
+        defaultAnswer: { type: "string", description: "Intended answer stored in the pause record for a later resume." },
+        timeoutMs: { type: "integer", minimum: 1, description: "Wait for form + claim to appear. Default 120000." },
+      },
+      required: ["sessionID", "question"],
+      additionalProperties: false,
+    },
+    async execute(input) {
+      if (!deps.pause) throw new Error("tree.pause requires a pause dependency")
+      const sessionID = asString(input.sessionID)
+      const question = asString(input.question)
+      if (!sessionID) throw new Error("sessionID is required")
+      if (!question) throw new Error("question is required")
+      // Walk to the true root so the durable record carries the tree anchor.
+      const cache = await loadAncestors(sessionID, deps)
+      const treeRoot = describeSelf(sessionID, (id) => cache.get(id)).rootID ?? null
+      const defaultAnswer = asString(input.defaultAnswer)
+      const result = await deps.pause({
+        sessionId: sessionID,
+        question,
+        ...(defaultAnswer ? { defaultAnswer } : {}),
+        ...(typeof input.timeoutMs === "number" ? { timeoutMs: Math.max(1, Math.trunc(input.timeoutMs)) } : {}),
+        treeRoot,
+      })
+      return ok({ sessionID, ...result })
+    },
+  }
+
+  const resume: TreeTool = {
+    name: "resume",
+    description:
+      "Reply to a paused session's pending form. The reply resolves the engine's Deferred, so the SAME turn continues: " +
+      "deterministic, no new prompt, no second billing. Reports `resumed` only after the form leaves the host's pending set " +
+      "(the session left question-paused). `stale-form` means the form died — pending forms live in engine RAM — and coming " +
+      "back needs a NEW paid turn (tree.wake), not a reply.",
+    input: {
+      type: "object",
+      properties: {
+        sessionID: { type: "string", description: "The paused session. Required." },
+        formId: { type: "string", description: "Pending form id, from tree.pause or the host's /api/sessions/status." },
+        answer: { type: "string", description: "Answer delivered to every field of the form." },
+      },
+      required: ["sessionID", "formId", "answer"],
+      additionalProperties: false,
+    },
+    async execute(input) {
+      if (!deps.resume) throw new Error("tree.resume requires a resume dependency")
+      const sessionID = asString(input.sessionID)
+      const formId = asString(input.formId)
+      const answer = asString(input.answer)
+      if (!sessionID) throw new Error("sessionID is required")
+      if (!formId) throw new Error("formId is required")
+      if (!answer) throw new Error("answer is required")
+      const result = await deps.resume({ sessionId: sessionID, formId, answer })
+      return ok({ sessionID, formId, ...result })
+    },
+  }
+
+  return { whoami, family, journal, handoff, wake, recover, status, pause, resume }
 }
 
 export const TREE_NAMESPACE = {
   name: "tree",
-  description: "Agent family trees: identity, family graph, durable journals, handoff, wake, recovery and status views.",
+  description:
+    "Agent family trees: identity, family graph, durable journals, handoff, wake, recovery, status views, and pause/resume.",
 }

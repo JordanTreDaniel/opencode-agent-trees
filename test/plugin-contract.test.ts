@@ -53,7 +53,7 @@ test("all registered tree tools declare and return the V2 structured-output cont
 
   assert.deepEqual(
     registered.map((tool) => tool.name).sort(),
-    ["family", "handoff", "journal", "status", "wake", "whoami"],
+    ["family", "handoff", "journal", "pause", "resume", "status", "wake", "whoami"],
   )
 
   const inputs: Record<string, Record<string, unknown>> = {
@@ -63,6 +63,8 @@ test("all registered tree tools declare and return the V2 structured-output cont
     handoff: { childID: "ses_child", summary: "finished" },
     wake: { sessionID: "ses_root", text: "wake" },
     status: { view: "default" },
+    pause: { sessionID: "ses_root", question: "Hold here?" },
+    resume: { sessionID: "ses_root", formId: "frm_probe", answer: "ok" },
   }
   const caller = { sessionID: "ses_root", agent: "orchestrator", messageID: "msg_test", id: "call_test" }
 
@@ -88,6 +90,18 @@ test("all registered tree tools declare and return the V2 structured-output cont
         assert.equal(status.meta.view, "default")
         assert.equal(status.meta.stale, true, "an unreachable host degrades to a DB-only projection")
         assert.deepEqual(status.sessions.map((session) => (session as { id: string }).id), ["ses_statusroot"])
+      }
+      if (tool.name === "pause") {
+        const pause = result.output as { status: string; detail: string }
+        // ses_root is absent from the fixture database: the claim cannot be
+        // verified, so the tool must refuse before sending anything — against
+        // an unreachable host it must never report `paused`.
+        assert.equal(pause.status, "errored", pause.detail)
+      }
+      if (tool.name === "resume") {
+        const resume = result.output as { status: string; detail: string }
+        assert.equal(resume.status, "error", resume.detail)
+        assert.doesNotMatch(resume.detail, /resumed/)
       }
     }
   } finally {

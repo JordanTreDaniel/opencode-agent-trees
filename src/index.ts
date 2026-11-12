@@ -10,6 +10,7 @@ import { Plugin } from "@opencode/plugin"
 import { appendEntry } from "./lib/journal.ts"
 import { extractChildID } from "./lib/child-dispatch.ts"
 import type { SessionLike } from "./lib/family.ts"
+import { pauseSession, resumeSession } from "./lib/pause.ts"
 import type { RecoveryListInput, RecoverSession } from "./lib/recover.ts"
 import { DEFAULT_HOST, defaultDbPath, projectStatus } from "./lib/status.ts"
 import { createTreeTools, TREE_NAMESPACE } from "./tools.ts"
@@ -73,6 +74,19 @@ export default Plugin.define({
           ...input,
           dbPath: input.dbPath ?? defaultDbPath(),
           host: input.host ?? (process.env.OPENCHAMBER_HOST || DEFAULT_HOST),
+        }),
+      // Pause/resume read the environment at call time so a reconfigured host
+      // or database is picked up without reloading the plugin.
+      pause: (input) =>
+        pauseSession({
+          ...input,
+          dbPath: defaultDbPath(),
+          host: process.env.OPENCHAMBER_HOST || DEFAULT_HOST,
+        }),
+      resume: (input) =>
+        resumeSession({
+          ...input,
+          host: process.env.OPENCHAMBER_HOST || DEFAULT_HOST,
         }),
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: Date.now,

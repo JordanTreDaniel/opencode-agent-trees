@@ -9,6 +9,8 @@ An OpenCode V2 server plugin that gives agents a view of their family tree and a
 - `tree_wake` — a thin `ctx.session.prompt` wrapper for any session.
 - `tree_recover` — recursively resumes a failed session tree leaf-first, with optional NRR-title discovery, sibling barriers, staged separate handoffs, and a structured recovery report.
 - `tree_status` — filtered projection over six named views (running, paused, restart candidates, one tree, one subtree), merging the session database with the host's live running set and pending forms.
+- `tree_pause` — pause a session by prompt injection: injects a prompt asking the target to call the `question` tool, then reports `paused` only after a NEW pending form **and** the execution claim are both observed; writes a durable record for resume.
+- `tree_resume` — reply to a paused form: deterministic, the same turn continues (no new prompt, no second billing); reports `resumed` only after the form leaves the pending set, or `stale-form` when the form died.
 - Hooks journal child-dispatch results and provider retry-policy decisions, including terminal decisions exposed by the retry hook.
 
 ## Install
@@ -53,6 +55,9 @@ The plugin ID is `agent-trees`; the tool namespace is `tree`.
 | The subagent tool's input/result carries a child session ID in a known field | Inferred / runtime-dependent | Hook extracts common ID field names; exact payload depends on OpenCode's built-in tool version |
 | `ctx.storage` has atomic compare-and-swap or cross-process transactions | Not documented; not assumed | Journal serializes concurrent appends per key within the plugin process only |
 | `session.retry` runs after provider-failure classification and exposes the current retry decision, including a terminal decision that a hook may make retryable | Documented | Retry policy in the V2 server guide |
+| Pause has no API: an API-created form is inert, `interrupt` kills the turn, and only an in-process `ask` (the model calling `question`) holds a turn | Verified live, not documented | Probed 2026-11-12: `POST /api/session/:id/form` blocks nothing; `POST /api/session/:id/interrupt` → `outcome: "interrupted"` (dead, not waiting); the pause experiment's model called `question` (tool `executed:false`, state `running`) and the form appeared with `time_suspended` held |
+| `POST /api/session/:id/form/:fid/reply` with `{answer}` resolves the Deferred and the SAME turn continues — no new prompt, no second billing | Verified live, not documented | Pause experiment 2026-11-12: `turnStartedAt` identical across pause/resume/completion, exactly one user message in the session (the pause prompt), the question tool's `time.completed` equals the reply moment, `idle_outcome: succeeded` |
+| A paused session reports `busy`, holds `time_suspended`, and is findable only as `running ∧ pending form` | Observed host + database state | Live probe 2026-11-12: `/api/sessions/status` → `status: "busy"`, `time_suspended` set on the row, `question-paused` membership matches |
 
 ### Live prompt-into-finished-session spike
 
@@ -99,9 +104,58 @@ Credit/auth failures stop the entire run; network failures retry the same prompt
 
 The result includes ordered `actions`, staged `handoffs`, unresolved `barriers`, per-node model labels, aggregate stats, and `rootReactivated`. Use `dryRun` before the first live recovery when the target tree is uncertain.
 
+## Pause and resume
+
+**Pause is prompt injection — model-dependent, and verified live rather than assumed. Resume is deterministic, with no model in the loop.**
+
+There is no blocking pause endpoint. `POST /api/session/{id}/form` creates an inert form that blocks nothing, and `POST /api/session/{id}/interrupt` kills the turn (`outcome: "interrupted"` — dead, not waiting). The only thing that holds a turn mid-flight is the engine's own ask primitive, which runs when the model calls the `question` tool. So:
+
+- **Pause** (`tree.pause`, `scripts/tree-pause.mjs`) sends the target a prompt instructing exactly that tool call, then polls the host's pending-form set **and** the session's execution claim (`time_suspended`) until both are observed together. Only then is the outcome `paused`. A prompt the model did not act on is reported `ignored`, a deadline without evidence is `timeout` — a pause is never reported from the prompt alone.
+- **Resume** (`tree.resume`, `scripts/tree-resume.mjs`) replies to the form (`POST /api/session/{id}/form/{fid}/reply`, `{answer}`). The reply resolves the engine's Deferred and **the same turn continues** — no new prompt, no second billing. `resumed` is reported only after the form leaves the host's pending set.
+
+### The verification surface is `question-paused`
+
+The `question-paused` view (`status = running ∧ hasPendingForm`, declared in [`src/lib/views.json`](./src/lib/views.json)) is the verification surface for both operations: pause must put the session **into** that view (form + claim observed), resume must take it **out** (form gone). Both halves are required because a paused session still reports `busy` and holds `time_suspended`, and a form can outlive its turn — neither signal proves a pause alone.
+
+### Durable records
+
+Pending forms live in engine RAM only; they die on an engine restart. Every verified pause therefore writes `<data-dir>/pauses/<sessionId>.json` with `{sessionId, formId, askedAt, intendedAnswer, treeRoot, questionFields}` — outside the session database — and resume reads it back. Data dir: `$AGENT_TREES_DATA_DIR`, else `$XDG_DATA_HOME/opencode-agent-trees`, else `~/.local/share/opencode-agent-trees`. A record whose form died reports **`stale-form`**: a reply cannot revive it, and coming back needs a **new paid turn** (a fresh prompt / `tree.wake`) — stated explicitly instead of being reported as success.
+
+### Scripts
+
+```sh
+# Dry run is the DEFAULT: prints the targets and the exact prompt text, sends nothing.
+node scripts/tree-pause.mjs (--session <id> | --view <name> | --root <id>) \
+  [--question "..."] [--answer "..."] [--timeout ms] [--allow-non-leaf] [--yes] [--json] [--all]
+
+# Reads pause records; dry run is the DEFAULT here too.
+node scripts/tree-resume.mjs (--session <id> | --root <id> | --all-recorded) [--answer "..."] [--yes] [--json]
+```
+
+- Target selection reuses the views layer (`--view running`, `--view tree:<rootId>`, `--root <id>`, `--session <id>`); leaves only by default, `--allow-non-leaf` to widen.
+- Refused before anything is sent: archived sessions, sessions that already hold a pending form, non-leaf sessions without the flag, and — when the host's live state cannot be read — every target, because "no pending form" could not be evidenced.
+- Every target gets its own outcome row: `paused` / `ignored` / `timeout` / `skipped(reason)` (pause) and `resumed` / `stale-form` / `not-paused` (resume). No target is ever reported `paused` without an observed form, or `resumed` without the form leaving the pending set.
+
+### Live verification (2026-11-12, controlled experiment)
+
+A throwaway three-session tree (root → mid → leaf) under the approved tmp path, paused and resumed through these scripts, then deleted (cost: $0.0044):
+
+| Step | Timestamp (UTC) | Result |
+|---|---|---|
+| Pause prompt injected | 05:16:25Z | `tree-pause --yes` |
+| Form + execution claim observed | 05:16:37.581Z | **`paused`** after 11 209 ms; form `frm_1ce2fbb7d001H94M7euZy5AINf`, field `q0` |
+| Triple verification | 05:17:13Z | host pending form ✓, database `time_suspended` ✓, leaf in `question-paused` ✓ |
+| Reply posted | 05:20:28Z | `tree-resume --yes` |
+| Form left the pending set | +644 ms | **`resumed`** — session left `question-paused` |
+| Turn completed | 05:21:20.277Z | `idle_outcome: succeeded`, claim released |
+
+In-turn proof: `turnStartedAt` (1794460586697) is identical across pause, resume and completion; the session contains exactly one user message — the pause prompt; the question tool's `time.completed` equals the reply moment; the model's continuation reads *"The user answered `resume` … finish its turn"*. The 27 pre-existing paused sessions were untouched (spot-checked form id unchanged before and after).
+
+Caveat: the **pause** half depends on the target model obeying the injected prompt and its agent permitting the `question` tool — hence `ignored`/`timeout` rather than a promise. The **resume** half has no such dependency.
+
 ## View scripts
 
-Three optional, read-only helper scripts render the same tree outside the plugin. All are plain ESM and require Node 22+; none is part of the published package (`package.json` `files` is `src` only) — they exist for local inspection.
+Five optional helper scripts render or act on the same tree outside the plugin. All are plain ESM and require Node 22+; none is part of the published package (`package.json` `files` is `src` only) — they exist for local inspection. `tree-view`, `sidebar-view` and `tree-status` are read-only; `tree-pause` and `tree-resume` change session state and therefore default to dry-run (see [Pause and resume](#pause-and-resume)).
 
 ```sh
 # Print the family tree from a live OpenCode session database.
@@ -112,6 +166,10 @@ node scripts/sidebar-view.mjs [--json] [--cli PATH] [--db PATH] [--port PORT] [-
 
 # Print one view of the status projection (see Views below).
 node scripts/tree-status.mjs [--view <name>] [--json] [--all] [--db PATH] [--host URL|off]
+
+# Pause targets (dry-run by default; --yes sends) / resume them from records.
+node scripts/tree-pause.mjs --session ses_... [--question "..."] [--answer "..."] [--yes] [--json]
+node scripts/tree-resume.mjs --all-recorded [--yes] [--json]
 ```
 
 - `tree-view.mjs` reads the session DB. Point it at yours with `--db` or `OPENCODE_DB`; the default is `$XDG_DATA_HOME/opencode/opencode.db`, falling back to `$HOME/.local/share/opencode/opencode.db`. Those are different instances — pass `--db` when in doubt.
@@ -135,7 +193,7 @@ node scripts/tree-status.mjs [--view <name>] [--root <id>] [--subtree <id>] \
 | `default` | `isRoot ∧ ¬fork ∧ ¬scheduled` | Conversations you started. **This is a proxy** — see below. |
 | `running` | `status = running` | Sessions with a turn in flight or holding the execution claim. |
 | `needs-restart` | `¬archived ∧ (outcome ∈ {failed, interrupted} ∨ orphaned)` | Restart candidates: recorded failures **plus orphaned claims** — rows that hold an execution claim but are absent from the host's active set. A session with no recorded outcome is never listed through the outcome arm; the orphan arm needs the host (see [Degradation](#data-sources-and-honesty-rules)). |
-| `question-paused` | `status = running ∧ hasPendingForm` | Sessions genuinely waiting on a question. |
+| `question-paused` | `status = running ∧ hasPendingForm` | Sessions genuinely waiting on a question — **the pause/resume verification surface**: pause must land a session here (form + claim observed), resume must remove it (form gone). |
 | `tree:<rootId>` | `rootId = <id>` | Every session in one tree, including the root (also `--root <id>`). |
 | `subtree:<id>` | `isSubtreeOf <id>` | One session and everything beneath it, self-inclusive (also `--subtree <id>`). |
 
@@ -204,6 +262,9 @@ No implementation is approved, no dashboard code ships here, and `sidebar-view.m
 - Model and agent fields reflect the session metadata OpenCode returns; this plugin does not pin or change child models.
 - `tree_status` reads a capped inventory by default (2000 rows, newest first) and says so with `meta.truncated`; pass `--all` or a larger `limit` when a view must be exhaustive. Child counts and ancestor chains are read from the whole table, so `depth`, `rootId` and `isLeaf` are correct even when the page is capped.
 - `tree_status` needs the host for run state, pending forms, and orphan detection. Without it the projection is database-only, sets `meta.stale: true`, reports pending forms as unknown rather than absent, and leaves `orphaned` as `null` with an explicit "orphan detection unavailable" warning — the orphan arm of `needs-restart` contributes nothing until the host is reachable, while recorded failures still list from the database. `userSpawned` and `waveIndex` have no source at all and are reported as unavailable.
+- **Pause is prompt injection, so it is model-dependent.** A target that ignores the injected prompt, or an agent whose permissions deny the `question` tool (the `general` subagent denies it), reports `ignored` — the pause mechanism cannot force a hold, it can only verify one. Resume has no such dependency: the reply either resolves the form or is reported `stale-form`.
+- **Pending forms live in engine RAM.** An engine restart kills every pending form; pause records survive (they are files outside the session database) but resume against a dead form reports `stale-form` and needs a new paid turn. Restarting the engine also destroys other work's live pauses, so the engine is never restarted to pick up plugin changes.
+- **`tree.pause` / `tree.resume` are contract-tested but not live-executed in the running engine.** OpenCode loads plugins at engine start; this wave deliberately did not restart the shared engine (it would kill the ~27 pre-existing pending forms owned by other work). The live experiment exercised the exact same `src/lib/pause.ts` code through `scripts/tree-pause.mjs` / `scripts/tree-resume.mjs` instead; the tool wrappers add only argument validation and a `treeRoot` walk.
 - Initial live integration failed with `Tool result declared output without an output schema`. The V2 runtime's execution branch rejects a returned object that owns `output` when the tool has no output schema; the earlier content-only adapter did not explain why that live path observed `output`. All registered tools declare the V2 object output schema and return structured `output` plus readable `content`. Post-change calls in the already-loaded shared service still returned the same error, and its catalog still advertises the old handoff description; the source fix is not live-verified because the shared service was not restarted or reloaded.
 - The shared database already contained one historical failed `opencode-go/deepseek-v4.1-flash` child (`Go usage limit exceeded`). It predates this plugin installation, so it did not produce a plugin hook journal entry. A separate free-tier failure was captured by the live `subagent` hook, but its child ID was only embedded in the error text; the current source now extracts IDs from that text, and this adjusted hook behavior has not yet been re-triggered live.
 
@@ -215,7 +276,7 @@ npm test
 npm run typecheck
 ```
 
-Tests cover journal concurrency, identity derivation, sibling-inclusive trees, recursive recovery and NRR discovery, truncation, cycle defense, handoff formatting, and tool handlers. Live-server behavior must still be rechecked after changing OpenCode versions.
+Tests cover journal concurrency, identity derivation, sibling-inclusive trees, recursive recovery and NRR discovery, truncation, cycle defense, handoff formatting, tool handlers, the status/views projection, and pause/resume (target guards, honest `ignored`/`timeout` outcomes, the `stale-form` path, and durable record round-trips). Live-server behavior must still be rechecked after changing OpenCode versions.
 
 ## Status
 

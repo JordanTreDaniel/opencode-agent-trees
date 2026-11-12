@@ -145,7 +145,7 @@
     "question-paused": {
       "filters": { "status": "running", "hasPendingForm": true },
       "sort": { "field": "lastActivity", "direction": "desc" },
-      "note": "Both filters are required. A paused session reports running and holds the execution claim, so status alone cannot find it. A pending form whose turn has ended (form present, idle_outcome succeeded) does not qualify: it is a stale form, not a pause."
+      "note": "Both filters are required. A paused session reports running and holds the execution claim, so status alone cannot find it. A pending form whose turn has ended (form present, idle_outcome succeeded) does not qualify: it is a stale form, not a pause. This view is the verification surface for pause/resume (src/lib/pause.ts): tree.pause reports `paused` only after a NEW pending form and the execution claim are both observed — i.e. the session matches this view — and tree.resume reports `resumed` only after the form has left the pending set — i.e. the session has left it."
     },
     "tree": {
       "filters": { "rootId": "$root" },
