@@ -76,16 +76,16 @@ function queryDatabase(dbPath, rootId) {
   const treeSql = `
     WITH RECURSIVE subtree AS (
       SELECT id, parent_id, title, time_created, time_updated, time_idle,
-             time_suspended, idle_outcome, metadata, 0 AS depth
+             time_suspended, time_archived, idle_outcome, metadata, 0 AS depth
       FROM session_v2 WHERE id = ?
       UNION ALL
       SELECT child.id, child.parent_id, child.title, child.time_created,
              child.time_updated, child.time_idle, child.time_suspended,
-             child.idle_outcome, child.metadata, subtree.depth + 1
+             child.time_archived, child.idle_outcome, child.metadata, subtree.depth + 1
       FROM session_v2 AS child JOIN subtree ON child.parent_id = subtree.id
     )
     SELECT id, parent_id, title, time_created, time_updated, time_idle,
-           time_suspended, idle_outcome, metadata, depth
+           time_suspended, time_archived, idle_outcome, metadata, depth
     FROM subtree ORDER BY depth, time_created, id`;
 
   if (!DatabaseSync) return queryWithSqliteCli(dbPath, rootId, treeSql);
@@ -106,9 +106,8 @@ function queryDatabase(dbPath, rootId) {
           AND (type = 'idle' OR (type = 'assistant' AND (data LIKE '%question%' OR data LIKE '%form%')))
       ) WHERE type = 'idle' OR recent_rank <= 12
       ORDER BY session_id, seq`;
-    const pendingSql = `SELECT session_id, type, data, delivery, time_created FROM session_pending WHERE session_id IN (${placeholders})`;
     const messages = handle.prepare(messageSql).all(...ids);
-    const pending = handle.prepare(pendingSql).all(...ids);
+    const pending = readPendingSqlite(handle, placeholders, ids);
     return { sessions, messages, pending };
   } finally {
     handle?.close();
@@ -131,8 +130,35 @@ function queryWithSqliteCli(dbPath, rootId, treeSql) {
       WHERE session_id IN (${ids})
         AND (type = 'idle' OR (type = 'assistant' AND (data LIKE '%question%' OR data LIKE '%form%')))
     ) WHERE type = 'idle' OR recent_rank <= 12 ORDER BY session_id, seq`);
-  const pending = run(`SELECT session_id, type, data, delivery, time_created FROM session_pending WHERE session_id IN (${ids})`);
+  const pending = readPendingCli(run, ids);
   return { sessions, messages, pending };
+}
+
+// v2 renamed session_pending -> session_inbox and replaced `data` with `payload`.
+// Probe both shapes and degrade to [] so unknown schema drift never kills the view.
+const PENDING_SHAPES = [
+  ['session_inbox', 'payload'],
+  ['session_pending', 'data'],
+];
+
+function readPendingSqlite(handle, placeholders, ids) {
+  for (const [table, column] of PENDING_SHAPES) {
+    try {
+      return handle
+        .prepare(`SELECT session_id, type, ${column} AS data, delivery, time_created FROM ${table} WHERE session_id IN (${placeholders})`)
+        .all(...ids);
+    } catch { /* table absent on this schema */ }
+  }
+  return [];
+}
+
+function readPendingCli(run, ids) {
+  for (const [table, column] of PENDING_SHAPES) {
+    try {
+      return run(`SELECT session_id, type, ${column} AS data, delivery, time_created FROM ${table} WHERE session_id IN (${ids})`);
+    } catch { /* table absent on this schema */ }
+  }
+  return [];
 }
 
 function parseJson(value) {
@@ -148,6 +174,7 @@ function normalizeRows({ sessions, messages, pending }, now) {
       id: String(row.id),
       title: row.title || '(untitled)',
       outcome: row.idle_outcome || null,
+      archived: row.time_archived != null,
       children: [],
       url: `${DASHBOARD}${encodeURIComponent(row.id)}`,
       errorClass: null,
@@ -196,11 +223,14 @@ function normalizeRows({ sessions, messages, pending }, now) {
       });
     }
     const updated = Number(node.time_updated) || 0;
-    node.active = !node.questionPaused && (
+    node.active = !node.archived && !node.questionPaused && (
       (!node.outcome && !node.time_suspended)
       || (updated > 0 && now - updated >= 0 && now - updated < ACTIVE_WINDOW_MS)
     );
-    if (node.questionPaused) node.excludedReason = 'question-paused';
+    // Archive outranks pause/active: an archived session is closed book
+    // and must never be planned as a restart target.
+    if (node.archived) node.excludedReason = 'archived';
+    else if (node.questionPaused) node.excludedReason = 'question-paused';
     else if (node.active) node.excludedReason = 'active-or-recently-active';
   }
 
@@ -286,7 +316,9 @@ function computePlan(nodes, rootId) {
   for (const leafId of restartLeaves) ancestors.delete(leafId);
 
   const countDescendants = (node) => node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
-  const allSucceeded = (node) => node.outcome === 'succeeded' && !node.excludedReason && node.children.every(allSucceeded);
+  const allSucceeded = (node) => node.outcome === 'succeeded'
+    && (!node.excludedReason || node.excludedReason === 'archived')
+    && node.children.every(allSucceeded);
   const counts = {
     nodesScanned: nodes.size,
     failed: [...failed].length,
@@ -294,6 +326,7 @@ function computePlan(nodes, rootId) {
     restartLeaves: restartLeaves.size,
     ancestors: ancestors.size,
     succeeded: [...nodes.values()].filter((node) => node.outcome === 'succeeded').length,
+    archived: [...nodes.values()].filter((node) => node.archived).length,
     questionPaused: [...nodes.values()].filter((node) => node.questionPaused).length,
     active: [...nodes.values()].filter((node) => node.active).length,
   };
@@ -302,13 +335,16 @@ function computePlan(nodes, rootId) {
 }
 
 function isFailure(node) {
-  return node.outcome === 'failed' || node.outcome === 'interrupted';
+  // An archived row is closed book, regardless of the outcome it recorded.
+  // Without this gate a fully archived tree still reports restart leaves.
+  return !node.archived && (node.outcome === 'failed' || node.outcome === 'interrupted');
 }
 
 function markers(node, plan) {
   const result = [];
   if (node.excludedReason === 'question-paused') result.push('[QUESTION]');
   if (node.excludedReason === 'active-or-recently-active') result.push('[ACTIVE]');
+  if (node.excludedReason === 'archived') result.push('[ARCHIVED]');
   if (plan.superseded.has(node.id)) result.push('[SUPERSEDED]');
   else if (plan.failed.has(node.id)) result.push('[FAILED]');
   else if (node.outcome === 'succeeded') result.push('[SUCCEEDED]');
@@ -318,6 +354,7 @@ function markers(node, plan) {
 }
 
 function outcomeLabel(node) {
+  if (node.excludedReason === 'archived') return node.outcome ? `${node.outcome}/archived` : 'archived';
   if (node.excludedReason === 'question-paused') return 'question-paused';
   if (node.excludedReason === 'active-or-recently-active') return 'active';
   return node.outcome || 'unknown';
@@ -490,12 +527,25 @@ function createResult(plan, options, generatedAt) {
     tree: buildJsonTree(plan, analyzedMode, options.depth),
     suggestedRecoverInput: {
       rootId: plan.root.id,
-      // tree.recover already treats succeeded nodes as complete and leaves active
-      // nodes pending; only old failed/interrupted attempts need explicit exclusion.
-      excludeSessionIds: [...plan.superseded].sort(),
+      // tree.recover resumes EVERY failed/interrupted session that is not excluded,
+      // not just leaves. To resume only the restart leaves, every other failure —
+      // archived, paused, active, superseded, and failed ancestors — must be named.
+      // Excluded sessions still satisfy their parent's sibling barrier.
+      excludeSessionIds: computeExcludeSessionIds(plan),
       pinModel: options.pinModel,
     },
   };
+}
+
+function computeExcludeSessionIds(plan) {
+  const excluded = [];
+  (function walk(node) {
+    if ((node.outcome === 'failed' || node.outcome === 'interrupted') && !plan.restartLeaves.has(node.id)) {
+      excluded.push(node.id);
+    }
+    for (const child of node.children) walk(child);
+  })(plan.root);
+  return excluded.sort();
 }
 
 function flatten(node) {
@@ -525,7 +575,35 @@ function main() {
   }
   const tree = displayTree(plan, mode, options.depth);
   const counts = plan.counts;
-  process.stdout.write(`${tree}\n\nTotals — nodes scanned: ${counts.nodesScanned}; failed: ${counts.failed}; superseded: ${counts.superseded}; restart leaves: ${counts.restartLeaves}; ancestors: ${counts.ancestors}; succeeded: ${counts.succeeded}; question-paused: ${counts.questionPaused}\n`);
+  process.stdout.write(`${tree}\n\nTotals — nodes scanned: ${counts.nodesScanned}; failed: ${counts.failed}; superseded: ${counts.superseded}; restart leaves: ${counts.restartLeaves}; ancestors: ${counts.ancestors}; succeeded: ${counts.succeeded}; archived: ${counts.archived}; question-paused: ${counts.questionPaused}\n`);
+  process.stdout.write(`\n${recoverBlock(plan, options)}\n`);
+}
+
+// Mechanical copy-paste block: the leaf set plus the exact recover call that
+// resumes only those leaves. Nothing here needs hand-assembly.
+function recoverBlock(plan, options) {
+  const leaves = [...plan.restartLeaves].map((id) => findNode(plan.root, id));
+  const lines = [];
+  if (leaves.length === 0) {
+    lines.push('Restart leaves: none — nothing to restart.');
+    const exclude = computeExcludeSessionIds(plan);
+    if (exclude.length) lines.push(`Excluded failures (ignored, still recorded): ${exclude.length}`);
+    return lines.join('\n');
+  }
+  lines.push(`Restart leaves (${leaves.length}):`);
+  for (const node of leaves) {
+    const cls = node.outcome === 'interrupted' ? 'I' : 'F';
+    lines.push(`  ${cls} - ${node.title} - ${node.id}`);
+  }
+  const exclude = computeExcludeSessionIds(plan);
+  lines.push('');
+  lines.push('Recover only these leaves:');
+  lines.push(`  tree.recover({`);
+  lines.push(`    rootId: "${plan.root.id}",`);
+  if (exclude.length) lines.push(`    excludeSessionIds: ${JSON.stringify(exclude)},`);
+  if (options.pinModel) lines.push(`    pinModel: "${options.pinModel}",`);
+  lines.push(`  })`);
+  return lines.join('\n');
 }
 
 try {

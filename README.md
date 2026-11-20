@@ -173,6 +173,8 @@ node scripts/tree-resume.mjs --all-recorded [--yes] [--json]
 ```
 
 - `tree-view.mjs` reads the session DB. Point it at yours with `--db` or `OPENCODE_DB`; the default is `$XDG_DATA_HOME/opencode/opencode.db`, falling back to `$HOME/.local/share/opencode/opencode.db`. Those are different instances — pass `--db` when in doubt.
+- `tree-view.mjs --mode restart` answers "pass me the root, tell me which leaves need restarting". It prints the restart leaf set and a ready-to-run `tree.recover({ rootId, excludeSessionIds })` call that resumes **only** those leaves — failed ancestors, superseded attempts, paused/active sessions and archived rows are named as exclusions, because `tree.recover` otherwise resumes every non-excluded failure. An archived session is closed book: it is never a restart leaf, even when it recorded `failed` or `interrupted`, so a fully archived tree correctly reports "nothing to restart".
+- The pending-row probe reads `session_inbox` (v2) and falls back to the legacy `session_pending` table; an unknown schema degrades to "no pending rows" rather than aborting the whole view.
 - `tree-status.mjs` resolves its database the same way and merges the host's live state; see [Views](#views).
 - `sidebar-view.mjs` shells out to an OpenChamber CLI. Configure it with `--cli` / `OPENCHAMBER_CLI` and `--db` / `OPENCODE_DB`.
 - `--pin-model` on `tree-view.mjs` defaults to `opencode-go/deepseek-v4.1-flash`; pass your own with `--pin-model provider/model`.
